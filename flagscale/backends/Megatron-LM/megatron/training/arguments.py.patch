@@ -1,5 +1,5 @@
 diff --git a/megatron/training/arguments.py b/megatron/training/arguments.py
-index 1120c7529..4f629c90c 100644
+index 1120c7529..1e7896a2d 100644
 --- a/megatron/training/arguments.py
 +++ b/megatron/training/arguments.py
 @@ -67,6 +67,7 @@ def add_megatron_arguments(parser: argparse.ArgumentParser):
@@ -202,6 +202,33 @@ index 1120c7529..4f629c90c 100644
          else:
              args.ffn_hidden_size = 4 * args.hidden_size
  
+@@ -981,7 +1004,7 @@ def validate_args(args, defaults={}):
+     # Relative position embeddings arguments
+     if args.position_embedding_type == 'relative':
+         assert (
+-            args.transformer_impl == "transformer_engine"
++            args.transformer_impl == "transformer_engine" or args.transformer_impl == "flag_engine"
+         ), 'Local transformer implementation currently does not support attention bias-based position embeddings.'
+ 
+     # MultiModal rotary embeddings arguments
+@@ -1138,7 +1161,7 @@ def validate_args(args, defaults={}):
+         args.replication_jump = None
+ 
+     if args.delay_wgrad_compute:
+-        assert args.transformer_impl == 'transformer_engine', \
++        assert args.transformer_impl == 'transformer_engine' or args.transformer_impl == 'flag_engine', \
+             "Delaying wgrad compute is only supported with transformer_engine implementation"
+         if args.overlap_grad_reduce:
+             assert is_te_min_version("2.8.0"), (
+@@ -1162,7 +1185,7 @@ def validate_args(args, defaults={}):
+         assert (
+             not args.enable_cuda_graph or not args.external_cuda_graph
+         ), "enable_cuda_graph and external_cuda_graph cannot be enabled at the same time."
+-        if args.transformer_impl == 'transformer_engine' and not args.te_rng_tracker:
++        if (args.transformer_impl == 'transformer_engine' or args.transformer_impl == 'flag_engine') and not args.te_rng_tracker:
+             args.te_rng_tracker = True
+             warn_rank_0("te_rng_tracker is not enabled, enabling it for CUDA graphs.", args.rank)
+ 
 @@ -1175,6 +1198,145 @@ def validate_args(args, defaults={}):
              args.recompute_granularity != 'full'
          ), 'recompute_granularity must not be full when CUDA Graphs are enabled.'
@@ -255,7 +282,7 @@ index 1120c7529..4f629c90c 100644
 +            )
 +            assert not args.moe_use_legacy_grouped_gemm, \
 +                'delay_wgrad_compute is not supported with legacy groupedgemm implementation'
-+            assert args.transformer_impl == 'transformer_engine', \
++            assert args.transformer_impl == 'transformer_engine' or args.transformer_impl == 'flag_engine', \
 +                'delay_wgrad_compute is only supported with transformer_engine implementation'
 +
 +        assert args.untie_embeddings_and_output_weights is True, (
@@ -266,7 +293,7 @@ index 1120c7529..4f629c90c 100644
 +        )
 +
 +    if args.peft_type is not None:
-+        assert args.transformer_impl == 'transformer_engine', \
++        assert args.transformer_impl == 'transformer_engine' or args.transformer_impl == 'flag_engine', \
 +            'PEFT is only supported with transformer_engine implementation'
 +        if args.num_experts is not None and args.moe_shared_expert_intermediate_size is not None:
 +            assert not args.moe_shared_expert_overlap, \
@@ -324,7 +351,7 @@ index 1120c7529..4f629c90c 100644
 +            )
 +            assert not args.moe_use_legacy_grouped_gemm, \
 +                'delay_wgrad_compute is not supported with legacy groupedgemm implementation'
-+            assert args.transformer_impl == 'transformer_engine', \
++            assert args.transformer_impl == 'transformer_engine' or args.transformer_impl == 'flag_engine', \
 +                'delay_wgrad_compute is only supported with transformer_engine implementation'
 +
 +        assert args.untie_embeddings_and_output_weights is True, (
@@ -335,19 +362,28 @@ index 1120c7529..4f629c90c 100644
 +        )
 +
 +    if args.peft_type is not None:
-+        assert args.transformer_impl == 'transformer_engine', \
++        assert args.transformer_impl == 'transformer_engine' or args.transformer_impl == 'flag_engine', \
 +            'PEFT is only supported with transformer_engine implementation'
 +        assert args.num_experts is None, "PEFT is not tested with MoE currently"
 +        assert args.recompute_method is None and args.recompute_granularity is None and args.recompute_num_layers is None, "PEFT will raise comfilcts with recompute currently"
 +        assert args.ckpt_format == 'torch', "PEFT is only tested with torch format checkpoint"
-+    
-+    if args.use_flag_engine:
-+        args.use_flag_gems = True
++
++    if args.transformer_impl == 'flag_engine':
 +        args.distributed_backend = 'flagcx'
++        args.use_flag_gems = True
 +
      # Print arguments.
      _print_args("arguments", args)
  
+@@ -1309,7 +1471,7 @@ def _add_transformer_engine_args(parser):
+                        help='Execute wgrad in higher precision even for FP8 runs',
+                        dest='fp8_wgrad')
+     group.add_argument('--transformer-impl', default='transformer_engine',
+-                       choices=['local', 'transformer_engine'],
++                       choices=['local', 'transformer_engine', 'flag_engine'],
+                        help='Which Transformer implementation to use.')
+     group.add_argument('--fp8-param-gather', action='store_true',
+                        help='Keep the compute param in fp8 (do not use any other intermediate '
 @@ -1585,6 +1747,8 @@ def _add_network_size_args(parser):
                         help='Which normalization technique to use.')
      group.add_argument('--norm-epsilon', type=float, default=1e-5,
@@ -607,7 +643,7 @@ index 1120c7529..4f629c90c 100644
  
      return parser
  
-@@ -3275,3 +3547,93 @@ def _add_sft_args(parser):
+@@ -3275,3 +3547,90 @@ def _add_sft_args(parser):
      group.add_argument('--sft-tokenizer-prompt-format', type=str, default="nemotron-h-aligned", 
                         help='SFT prompt format.')
      return parser
@@ -684,10 +720,7 @@ index 1120c7529..4f629c90c 100644
 +    return parser
 +
 +def _add_flagengine_args(parser):
-+    group = parser.add_argument_group(title="flag gems")
-+
-+    group.add_argument('--use-flag-engine', action='store_true',
-+                       help='Enable flag engine for training')
++    group = parser.add_argument_group(title="flag engine")
 +    group.add_argument('--use-flag-gems', action='store_true',
 +                       help='Enable flag gems for training')
 +    group.add_argument('--flag-gems-log-path', type=str, default=None,
