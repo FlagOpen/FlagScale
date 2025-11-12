@@ -87,7 +87,7 @@ def _reset_serve_port(config):
         config.experiment.runner.deploy.port = cli_args_port
 
     for item in config.serve:
-        if item.get("serve_id", None) == "vllm_model":
+        if item.get("serve_id", None) in ("vllm_model", "sglang_model"):
             if deploy_port:
                 model_port = deploy_port
                 item.engine_args["port"] = deploy_port
@@ -118,7 +118,7 @@ def _get_engine_args(config, model="vllm_model"):
     engine_args = {}
 
     for item in serve_config:
-        if item.get("serve_id", None) == model:
+        if item.get("serve_id", None) in ("vllm_model", "sglang_model"):
             engine_args = item.get("engine_args", {})
             break
     if not engine_args:
@@ -134,7 +134,7 @@ def _get_profile_args(config, model="vllm_model"):
 
     profile_args = {}
     for item in serve_config:
-        if item.get("serve_id", None) == model:
+        if item.get("serve_id", None) in ("vllm_model", "sglang_model"):
             profile_args = item.get("profile", {})
             break
     return profile_args
@@ -146,7 +146,7 @@ def _update_auto_engine_args(config, model="vllm_model", new_engine_args={}):
         raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
     engine_args = {}
     for item in serve_config:
-        if item.get("serve_id", None) == model:
+        if item.get("serve_id", None) in ("vllm_model", "sglang_model"):
             engine_args = item.get("engine_args", {})
 
             if new_engine_args.get("tensor_parallel_size", None):
@@ -200,7 +200,7 @@ def _update_config_serve(config: DictConfig):
 
     if cli_model_path or cli_engine_args:
         for item in config.serve:
-            if item.get("serve_id", None) == "vllm_model":
+            if item.get("serve_id", None) in ("vllm_model", "sglang_model"):
                 if cli_model_path:
                     item.engine_args["model"] = cli_model_path
                 if cli_engine_args:
@@ -563,12 +563,12 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             logger.info(f"generate run script args, config: {config}")
                             args = None
                             for item in config.get("serve", []):
-                                if item.get("serve_id", None) == "vllm_model":
+                                if item.get("serve_id", None) in ("vllm_model", "sglang_model"):
                                     args = item
                                     break
                             if args is None:
                                 raise ValueError(
-                                    f"No 'vllm_model' configuration found in task config: {serve.task_config}"
+                                    f"No 'sglang_model' configuration found in task config: {serve.task_config}"
                                 )
                             common_args = copy.deepcopy(args.get("engine_args", {}))
                             sglang_args = args.get("engine_args_specific", {}).get("sglang", {})
@@ -603,7 +603,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                                 sglang_args_flatten = flatten_dict_to_args(sglang_args, ["model"])
                                 command.extend(sglang_args_flatten)
                             else:
-                                raise ValueError("Either model must be specified in vllm_model.")
+                                raise ValueError(
+                                    "Either model should be specified in sglang_model."
+                                )
 
                             command.extend(["--node-rank", str(index)])
                             nnodes = config.experiment.runner.get("nnodes", None)

@@ -105,7 +105,7 @@ def sglang_serve(args):
         sglang_args_flatten = flatten_dict_to_args(sglang_args, ["model"])
         command.extend(sglang_args_flatten)
     else:
-        raise ValueError("Either model must be specified in vllm_model.")
+        raise ValueError("Either model must be specified in sglang_model.")
 
     # set defualt args align with sglang.launch_server
     command.extend(["--node-rank", str(0)])
@@ -141,12 +141,14 @@ def main():
 
     model_config = None
     for item in serve_config:
-        if item.get("serve_id", None) == "vllm_model":
+        if item.get("serve_id", None) in ("vllm_model", "sglang_model"):
             model_config = item
             break
 
     if model_config is None:
-        raise ValueError(f"No 'vllm_model' configuration found in task config: {serve.task_config}")
+        raise ValueError(
+            f"No 'vllm_model' or 'sglang_model' configuration found in task config: {serve.task_config}"
+        )
 
     engine = model_config.get("engine", None)
 
