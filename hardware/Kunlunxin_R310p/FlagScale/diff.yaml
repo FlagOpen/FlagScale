@@ -1,10 +1,10 @@
 backends_commit: {}
 backends_version:
   FlagScale: 0.9.0
-commit: d374764095d71b3d9160aacfb408e70ee1bb3f0d
+commit: 3c5dbc409d6e222009bc07b772a141d6f5a81bca
 contact: ''
 device_type: Kunlunxin_R310p
 models:
-- qwen3-8b
+- qwen3-8b-flagscale
 task:
 - train
