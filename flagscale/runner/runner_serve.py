@@ -556,6 +556,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     if engine == "sglang":
                         from flagscale.serve.args_mapping.mapping import ARGS_CONVERTER
 
+                        if index == 0:
+                            if per_node_cmd:
+                                f.write(f"{per_node_cmd}\n")
                         if index != 0:
                             logger.info(f"generate run script args, config: {config}")
                             args = None
@@ -614,7 +617,13 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             command.extend(["--dist-init-addr", str(addr) + ":" + str(port)])
                             command.append("> /dev/null 2>&1 &")
 
-                            node_cmd = ' '.join(command)
+                            if docker_name:
+                                node_cmd = ' '.join(command)
+                            else:
+                                # Directly connecting to a remote Docker environment requires processing the command
+                                command.insert(0, "(")
+                                command.append(") && disown")
+                                node_cmd = ' '.join(command)
                             if per_node_cmd:
                                 node_cmd = f"{per_node_cmd} && " + node_cmd
                             if before_start_cmd:
