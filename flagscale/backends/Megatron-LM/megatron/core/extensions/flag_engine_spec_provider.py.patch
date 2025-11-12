@@ -1,6 +1,6 @@
 diff --git a/megatron/core/extensions/flag_engine_spec_provider.py b/megatron/core/extensions/flag_engine_spec_provider.py
 new file mode 100644
-index 000000000..f5b11a1e8
+index 000000000..e5bedacdd
 --- /dev/null
 +++ b/megatron/core/extensions/flag_engine_spec_provider.py
 @@ -0,0 +1,98 @@
@@ -56,7 +56,7 @@ index 000000000..f5b11a1e8
 +    def layer_norm(self, rms_norm: bool = False, for_qk: bool = False) -> type:
 +        """Which module to use for layer norm"""
 +        if for_qk and not is_te_min_version("1.9.0"):
-+            # TENorm significantly harms convergence when used
++            # FENorm significantly harms convergence when used
 +            # for QKLayerNorm if TE Version < 1.9;
 +            # we instead use the Apex implementation.
 +            return FusedLayerNorm
