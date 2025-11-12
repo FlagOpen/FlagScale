@@ -513,8 +513,6 @@ def normalize_backend(backend):
         return "omniinfer"
     elif input_lower in ["verl"]:
         return "verl"
-    elif input_lower in ["lerobot", "Lerobot"]:
-        return "lerobot"
     elif input_lower in ["transformerengine"]:
         return "TransformerEngine"
     raise ValueError(f'Unsupported backend {backend}')
@@ -580,4 +578,3 @@ if __name__ == "__main__":
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
             patch(main_path, backend, src, dst)
-
