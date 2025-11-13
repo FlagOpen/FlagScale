@@ -1,10 +1,11 @@
+config_path: examples/robobrain_x0_5/conf/train/libero_qwengroot.yaml
 seed: 42
 trackers: [jsonl, wandb]
 wandb_entity: jinhuiye
 wandb_project: StarVLA_Libero
 is_debug: false
 
-batch_size: 1
+batch_size: 2
 resume: false
 checkpoint_dir: results/ckpt_in
 exp_name: starvla
@@ -96,4 +97,6 @@ trainer:
   enable_gradient_checkpointing: true
   enable_mixed_precision_training: true
 
-
+system: {}
+model: {}
+data: {}

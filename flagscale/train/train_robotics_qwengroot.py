@@ -154,7 +154,7 @@ def main(cfg) -> None:
     # prepare data
     ds = get_train_dataset(
         cfg.datasets.data_path,
-        batch_size=1,
+        batch_size=cfg.batch_size,
         shuffle_buffer_size=100,
         max_samples_per_sequence=100,
         worker_config=WorkerConfig.default_worker_config(num_workers=1, data_parallel_group=None),
@@ -201,7 +201,7 @@ def main(cfg) -> None:
             break
 
     if dist.get_rank() == 0 and local_rank == 0:
-        vla.module.save_pretrained(cfg.output_directory)
+        vla.module.save_pretrained()
 
     dist.barrier()
     dist.destroy_process_group()
@@ -209,11 +209,11 @@ def main(cfg) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_yaml", type=str, default="examples/robotics/conf/train/libero_qwengroot.yaml", help="Path to YAML config")
+    parser.add_argument("--config-path", type=str, default="examples/robotics/conf/train/libero_qwengroot.yaml", help="Path to YAML config")
     args, clipargs = parser.parse_known_args()
 
     # Load YAML config & Convert CLI overrides to dotlist config
-    cfg = OmegaConf.load(args.config_yaml)
+    cfg = OmegaConf.load(args.config_path)
     # dotlist = normalize_dotlist_args(clipargs)  # Normalize CLI args to dotlist format
     # cli_cfg = OmegaConf.from_dotlist(dotlist)
     # cfg = OmegaConf.merge(cfg, cli_cfg)

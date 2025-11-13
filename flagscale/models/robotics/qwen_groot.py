@@ -92,7 +92,10 @@ class Qwen_GR00T(PreTrainedModel):
         # Step 4: Action Expert Forward and Loss
         with torch.autocast("cuda", dtype=torch.float32):
             # [B, T_full, action_dim]
-            actions = torch.tensor(np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype) 
+            if isinstance(actions[0], torch.Tensor):
+                actions = torch.stack(actions, dim=0).to(device=last_hidden.device, dtype=last_hidden.dtype)
+            else:
+                actions = torch.tensor(np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype) 
             actions_target = actions[:, -(self.future_action_window_size+1):, :]  # (B, chunk_len, action_dim)
 
             repeated_diffusion_steps = (
@@ -103,9 +106,13 @@ class Qwen_GR00T(PreTrainedModel):
             
             state_repeated = None
             if state is not None:
-                state = torch.tensor(
-                    np.array(state), device=last_hidden.device, dtype=last_hidden.dtype
-                )
+
+                if isinstance(state[0], torch.Tensor):
+                    state = torch.stack(state, dim=0).to(device=last_hidden.device, dtype=last_hidden.dtype)
+                else:
+                    state = torch.tensor(
+                        np.array(state), device=last_hidden.device, dtype=last_hidden.dtype
+                    )
                 state_repeated = state.repeat(repeated_diffusion_steps, 1, 1)
 
             action_loss = self.action_model(last_hidden_repeated, actions_target_repeated, state_repeated)  # (B, chunk_len, action_dim)
@@ -319,6 +326,6 @@ if __name__ == "__main__":
     args, clipargs = parser.parse_known_args()
     cfg = OmegaConf.load(args.config_yaml)
 
-    test_with_fake_sample(cfg)
-    # test_with_dataloader(cfg)
+    # test_with_fake_sample(cfg)
+    test_with_dataloader(cfg)
  
