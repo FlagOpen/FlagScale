@@ -5,8 +5,8 @@ defaults:
 experiment:
   exp_name: emu3p5_one_image_generation_x2i
   exp_dir: outputs/${experiment.exp_name}
-  vq_model: /share/project/ly/workspace/code/release/Emu3.5/weights/Emu3.5-VisionTokenizer
-  model: /share/project/ly/workspace/code/release/Emu3.5/weights/Emu3.5-image/
+  vq_model: BAAI/Emu3.5-VisionTokenizer
+  model: BAAI/Emu3.5-image
   tokenizer: src/tokenizer_emu3_ibq/
   hf_config_path: src/emu3p5/
   task:
@@ -16,7 +16,7 @@ experiment:
   runner:
     hostfile: null
   cmds:
-    before_start: source /root/miniconda3/bin/activate /share/project/zhaoyingli/envs/release-fs-vllm
+    before_start: source /root/miniconda3/bin/activate flagscale-inference
   envs:
     CUDA_VISIBLE_DEVICES: 0,1
     VLLM_LOGGING_LEVEL: "DEBUG"
