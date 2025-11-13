@@ -153,10 +153,14 @@ def main():
     engine = model_config.get("engine", None)
 
     if engine == "vllm":
+        if model_config.get("serve_id", None) != "vllm_model":
+            raise ValueError("serve_id in yaml config must be specified in vllm_model.")
         return_code = vllm_serve(model_config)
     elif engine == "llama_cpp":
         return_code = llama_cpp_serve(model_config)
     elif engine == "sglang":
+        if model_config.get("serve_id", None) != "sglang_model":
+            logger.warning("serve_id in yaml config should be specified in sglang_model")
         return_code = sglang_serve(model_config)
     else:
         raise ValueError(
