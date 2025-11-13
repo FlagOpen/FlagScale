@@ -1,5 +1,5 @@
 diff --git a/verl/utils/seqlen_balancing.py b/verl/utils/seqlen_balancing.py
-index bc5588f7..cf125be8 100644
+index bc5588f7..1040ec11 100644
 --- a/verl/utils/seqlen_balancing.py
 +++ b/verl/utils/seqlen_balancing.py
 @@ -15,7 +15,9 @@
@@ -13,7 +13,7 @@ index bc5588f7..cf125be8 100644
  import torch
  from torch import distributed as dist
  
-@@ -34,162 +36,610 @@ def calculate_workload(seqlen_list: list[int]):
+@@ -34,162 +36,605 @@ def calculate_workload(seqlen_list: list[int]):
      return 24576 * seqlen_list + seqlen_list**2
  
  
@@ -38,9 +38,9 @@ index bc5588f7..cf125be8 100644
 +    def __init__(
 +        self,
 +        bin_capacity: int,
-+        min_bin_count: Optional[int] = None,
-+        bin_count_multiple: Optional[int] = None,
 +        equal_size: bool = True,
++        min_bin_count: Optional[int] = 0,
++        bin_count_multiple: Optional[int] = None,
 +    ):
 +        """Initialize the sequence packer.
 +
@@ -62,6 +62,7 @@ index bc5588f7..cf125be8 100644
 +            ValueError: If min_bin_count or bin_count_multiple are invalid.
 +        """
 +        self.bin_capacity = bin_capacity
++        self.equal_size = equal_size
 +        self.min_bin_count = min_bin_count
 +        self.bin_count_multiple = bin_count_multiple
 +        self.metrics = None
@@ -568,13 +569,7 @@ index bc5588f7..cf125be8 100644
 +    where n is the number of sequences and m is the number of bins.
 +    """
 +
-+    def _classify_items(self, items: list[tuple[int, int]]) 
-+    -> tuple[
-+        list[tuple[int, int]],
-+        list[tuple[int, int]],
-+        list[tuple[int, int]],
-+        list[tuple[int, int]],
-+    ]:
++    def _classify_items(self, items: list[tuple[int, int]]) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]:
 +        """Split items into large / medium / small / tiny classes.
 +
 +        Follows the classification used by Johnson & Garey:
@@ -713,9 +708,9 @@ index bc5588f7..cf125be8 100644
 +    seqlen_list: list[int],
 +    algorithm: str,
 +    bin_capacity: int,
++    equal_size: bool,
 +    min_bin_count: Optional[int] = None,
 +    bin_count_multiple: Optional[int] = None,
-+    equal_size: bool,
 +):
 +    """
 +    Calculate balanced partitions of indices from seqlen_list.
@@ -762,7 +757,7 @@ index bc5588f7..cf125be8 100644
          for i, partition in enumerate(partitions):
              assert len(partition) > 0, f"the {i}-th partition is empty"
              for idx in partition:
-@@ -198,8 +648,16 @@ def get_seqlen_balanced_partitions(seqlen_list: list[int], k_partitions: int, eq
+@@ -198,8 +643,16 @@ def get_seqlen_balanced_partitions(seqlen_list: list[int], k_partitions: int, eq
          assert seen_idx == set(range(len(seqlen_list)))
          return sorted_partitions
  
@@ -781,7 +776,7 @@ index bc5588f7..cf125be8 100644
  
  
  def log_seqlen_unbalance(seqlen_list: list[int], partitions: list[list[int]], prefix):
-@@ -266,23 +724,127 @@ def rearrange_micro_batches(
+@@ -266,23 +719,127 @@ def rearrange_micro_batches(
      same_micro_num_in_dp=True,
      min_num_micro_batch=None,
      use_dynamic_bsz_balance=True,
@@ -911,7 +906,7 @@ index bc5588f7..cf125be8 100644
      # this is per local micro_bsz
      input_ids = batch["input_ids"]
      if input_ids.is_nested:
-@@ -311,7 +873,15 @@ def rearrange_micro_batches(
+@@ -311,7 +868,15 @@ def rearrange_micro_batches(
      assert num_micro_batches <= len(seq_len_effective)
  
      workloads = calculate_workload(seq_len_effective)
