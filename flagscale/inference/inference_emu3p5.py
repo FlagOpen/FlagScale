@@ -1,27 +1,24 @@
 import os
 import sys
+
 import torch
 
-from tqdm import tqdm
-from PIL import Image
 from omegaconf import DictConfig, ListConfig
+from PIL import Image
+from tqdm import tqdm
 
 import vllm
+
 from vllm import LLM
 from vllm.sampling_params import SamplingParams
 
-from flagscale.logger import logger
 from flagscale.inference.arguments import parse_config
 from flagscale.inference.emu_utils import Emu3p5Processor
 from flagscale.inference.emu_utils.prompt_case import EMU_TASKS
+from flagscale.logger import logger
 
 
-def generate(
-    model: LLM,
-    processor: Emu3p5Processor,
-    prompts: list,
-    sampling_cfg: DictConfig,
-):
+def generate(model: LLM, processor: Emu3p5Processor, prompts: list, sampling_cfg: DictConfig):
 
     for name, question in tqdm(prompts, total=len(prompts)):
         logger.info(f">>> Processing: {name=}, {question=}")
@@ -55,7 +52,7 @@ def generate(
         logger.info(f"{sampling_params=}")
         results = model.generate(inputs, sampling_params=sampling_params)
 
-        logger.info("-"*40)
+        logger.info("-" * 40)
         mm_outputs = processor.process_results(results)
         for i, (out_type, output) in enumerate(mm_outputs):
             if out_type in ["text", "global_cot", "image_cot"]:
@@ -73,8 +70,12 @@ if __name__ == "__main__":
 
     cfg = parse_config()
     task_type = cfg.generate.get("task_type", None)
-    assert task_type in ["t2i", "x2i", "story", "howto"], \
-        f"Unsupported task_type: {task_type}. Options: 't2i', 'x2i', 'story', and 'howto'."
+    assert task_type in [
+        "t2i",
+        "x2i",
+        "story",
+        "howto",
+    ], f"Unsupported task_type: {task_type}. Options: 't2i', 'x2i', 'story', and 'howto'."
 
     cases = EMU_TASKS[task_type]
     if isinstance(cases, dict):
@@ -89,7 +90,7 @@ if __name__ == "__main__":
     vq_model_path = llm_cfg.pop("vq_model", None)
     assert tokenizer_path and vq_model_path, "Please set the tokenzier and vq_model in llm config."
 
-    image_area = cfg.generate.get("image_area", 720*720)
+    image_area = cfg.generate.get("image_area", 720 * 720)
     ratio = cfg.generate.get("ratio", "default")
     processor = Emu3p5Processor(task_type, tokenizer_path, vq_model_path, image_area, ratio)
 

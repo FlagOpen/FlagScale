@@ -1,21 +1,23 @@
-
 import os.path as osp
+
 import numpy as np
 import torch
 
-from PIL import Image
 from omegaconf import OmegaConf
+from PIL import Image
 from transformers import AutoTokenizer
 from transformers.models.auto.configuration_auto import CONFIG_MAPPING
 
 from vllm.outputs import RequestOutput
+
 from flagscale.logger import logger
 
 try:
-    from src.vision_tokenizer.ibq import IBQ
-    from src.utils.input_utils import format_image_string, smart_resize
-    from src.utils.generation_utils import multimodal_decode
     from src.emu3p5.configuration_emu3 import Emu3Config
+    from src.utils.generation_utils import multimodal_decode
+    from src.utils.input_utils import format_image_string, smart_resize
+    from src.vision_tokenizer.ibq import IBQ
+
     CONFIG_MAPPING.register("Emu3", Emu3Config)
 except ImportError as e:
     print(f"ImportError: {e}")
@@ -67,7 +69,7 @@ special_tokens = dict(
     EOC="<|extra_51|>",
 )
 
-resolution_str = ["0","1","2","3","4","5","6","7","8","9","*"]
+resolution_str = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "*"]
 
 UNCOND_PROMPT_1 = "<|extra_203|>You are a helpful assistant. USER: "
 UNCOND_PROMPT_2 = " ASSISTANT: <|extra_100|>"
@@ -93,7 +95,7 @@ class Emu3p5Processor:
         task_type: str,
         tokenizer_path: str,
         vq_model_path: str,
-        image_area: int = 720*720,
+        image_area: int = 720 * 720,
         ratio: str = "default",
         vq_type: str = "ibq",
         device: str = "cuda:1",
@@ -147,7 +149,11 @@ class Emu3p5Processor:
             case "ibq":
                 cfg = OmegaConf.load(osp.join(self.vq_model_path, "config.yaml"))
                 self.img_tokenizer = IBQ(**cfg)
-                ckpt = torch.load(osp.join(self.vq_model_path, "model.ckpt"), map_location="cpu", weights_only=True)
+                ckpt = torch.load(
+                    osp.join(self.vq_model_path, "model.ckpt"),
+                    map_location="cpu",
+                    weights_only=True,
+                )
                 self.img_tokenizer.load_state_dict(ckpt)
                 self.img_tokenizer.eval().to(self.device)
                 self.img_tokenizer.requires_grad_(False)
@@ -196,8 +202,16 @@ class Emu3p5Processor:
 
         if self.ratio is not None:
             resolution_token_ids = self.text_tokenizer.encode(self.ratio, add_special_tokens=False)
-            input_ids += [self.special_token_ids["BOI"]] + resolution_token_ids + [self.special_token_ids["IMG"]]
-            uncond_input_ids += [self.special_token_ids["BOI"]] + resolution_token_ids + [self.special_token_ids["IMG"]]
+            input_ids += (
+                [self.special_token_ids["BOI"]]
+                + resolution_token_ids
+                + [self.special_token_ids["IMG"]]
+            )
+            uncond_input_ids += (
+                [self.special_token_ids["BOI"]]
+                + resolution_token_ids
+                + [self.special_token_ids["IMG"]]
+            )
 
         # print(f"{input_ids=}")
         # print(f"{uncond_input_ids=}")
@@ -210,7 +224,9 @@ class Emu3p5Processor:
     def process_results(self, results: list[RequestOutput]):
         cond_res, _ = results
 
-        all_token_ids = torch.tensor(cond_res.prompt_token_ids + cond_res.outputs[0].token_ids, device=self.device)
+        all_token_ids = torch.tensor(
+            cond_res.prompt_token_ids + cond_res.outputs[0].token_ids, device=self.device
+        )
         outputs = self.text_tokenizer.decode(all_token_ids, skip_special_tokens=False)
 
         mm_outputs = multimodal_decode(outputs, self.text_tokenizer, self.img_tokenizer)
