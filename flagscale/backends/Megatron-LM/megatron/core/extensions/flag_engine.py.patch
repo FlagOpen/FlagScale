@@ -1,9 +1,9 @@
 diff --git a/megatron/core/extensions/flag_engine.py b/megatron/core/extensions/flag_engine.py
 new file mode 100644
-index 000000000..31ec76f8f
+index 000000000..74ec590b6
 --- /dev/null
 +++ b/megatron/core/extensions/flag_engine.py
-@@ -0,0 +1,949 @@
+@@ -0,0 +1,995 @@
 +# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 +
 +import dataclasses
@@ -11,7 +11,7 @@ index 000000000..31ec76f8f
 +import os
 +import pickle
 +import warnings
-+from typing import Any, Callable, List, Optional, Tuple
++from typing import Any, Callable, List, Optional, Tuple, Union, Iterable
 +
 +import torch
 +import torch.nn.functional as F
@@ -953,3 +953,49 @@ index 000000000..31ec76f8f
 +            )
 +
 +        return core_attn_out
++
++
++class FEFusedAdam(te.pytorch.optimizers.FusedAdam):
++
++    def __init__(
++        self,
++        params: Iterable[torch.nn.Parameter],
++        lr: Union[float, torch.Tensor] = 1e-3,
++        betas: Tuple[float, float] = (0.9, 0.999),
++        eps: float = 1e-8,
++        weight_decay: float = 0.0,
++        amsgrad: bool = False,
++        *,
++        bias_correction: bool = True,
++        adam_w_mode: bool = True,
++        capturable: bool = False,
++        master_weights: bool = False,
++        master_weight_dtype: torch.dtype = torch.float32,
++        exp_avg_dtype: torch.dtype = torch.float32,
++        exp_avg_sq_dtype: torch.dtype = torch.float32,
++        use_decoupled_grad: bool = False,
++        store_param_remainders: bool = False,
++        set_grad_none: Optional[bool] = None,
++        **kwargs: Any,
++    ) -> None:
++        super().__init__(
++            params=params,
++            lr=lr,
++            betas=betas,
++            eps=eps,
++            weight_decay=weight_decay,
++            amsgrad=amsgrad,
++            bias_correction=bias_correction,
++            adam_w_mode=adam_w_mode,
++            capturable=capturable,
++            master_weights=master_weights,
++            master_weight_dtype=master_weight_dtype,
++            exp_avg_dtype=exp_avg_dtype,
++            exp_avg_sq_dtype=exp_avg_sq_dtype,
++            use_decoupled_grad=use_decoupled_grad,
++            store_param_remainders=store_param_remainders,
++            set_grad_none=set_grad_none,
++            use_flag_engine=True,
++            **kwargs
++        )
++
