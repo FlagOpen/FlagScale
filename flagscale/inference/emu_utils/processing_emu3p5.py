@@ -193,8 +193,6 @@ class Emu3p5Processor:
 
         prompt = prompt_1 + img_str + prompt_2
         uncond_prompt = UNCOND_PROMPT_1 + img_str + UNCOND_PROMPT_2
-        # print(f"{prompt=}")
-        # print(f"{uncond_prompt=}")
 
         input_ids = self.text_tokenizer.encode(prompt, add_special_tokens=False)
         uncond_input_ids = self.text_tokenizer.encode(uncond_prompt, add_special_tokens=False)
@@ -212,9 +210,6 @@ class Emu3p5Processor:
                 + resolution_token_ids
                 + [self.special_token_ids["IMG"]]
             )
-
-        # print(f"{input_ids=}")
-        # print(f"{uncond_input_ids=}")
 
         if input_ids[0] != self.special_token_ids["BOS"]:
             input_ids = [self.special_token_ids["BOS"]] + input_ids

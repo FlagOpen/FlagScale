@@ -25,10 +25,7 @@ def generate(model: LLM, processor: Emu3p5Processor, prompts: list, sampling_cfg
 
         input_ids, uncond_input_ids = processor.process_inputs(question)
 
-        inputs = {
-            "prompt_token_ids": input_ids.tolist()[0],
-            "uncond_prompt_token_ids": uncond_input_ids.tolist()[0],
-        }
+        inputs = {"prompt_token_ids": input_ids, "uncond_prompt_token_ids": uncond_input_ids}
 
         extra_args = {
             "guidance_scale": sampling_cfg.guidance_scale,
