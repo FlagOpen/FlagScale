@@ -35,6 +35,7 @@ SERVICE_CONFIG = {
 
 MODEL: Qwen_GR00T = None
 
+
 class RobobrainX05Server:
     def __init__(self, config):
         self.config = config

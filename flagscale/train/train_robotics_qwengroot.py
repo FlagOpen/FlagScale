@@ -1,5 +1,5 @@
 # Copyright 2025 starVLA community. All rights reserved.
-# Licensed under the MIT License, Version 1.0 (the "License"); 
+# Licensed under the MIT License, Version 1.0 (the "License");
 # Implemented by [Jinhui YE / HKUST University] in [2025].
 
 
@@ -15,32 +15,36 @@ Conventions:
 import argparse
 import json
 import os
+import pathlib
+import platform
+import random
+import time
+
 from pathlib import Path
 from typing import Tuple
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-import time
-import random
-import platform
-import pathlib
-import epath
 
-from torch.nn.parallel import DistributedDataParallel as DDP
+import epath
+import numpy as np
 import torch
 import torch.distributed as dist
-import wandb
 import yaml
+
 from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from omegaconf import OmegaConf
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoProcessor, get_scheduler
 
-from flagscale.models.robotics.qwen_groot import Qwen_GR00T, get_batch
-from megatron.energon import get_train_dataset, get_loader, WorkerConfig
-from tools.datasets.vla.data.dataset_helpers_np_pil import TaskEncoder 
+import wandb
+
+from megatron.energon import WorkerConfig, get_loader, get_train_dataset
+from tools.datasets.vla.data.dataset_helpers_np_pil import TaskEncoder
+
 from flagscale.logger import logger
+from flagscale.models.robotics.qwen_groot import Qwen_GR00T, get_batch
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -87,7 +91,9 @@ def build_param_lr_groups(model, cfg):
     return param_groups
 
 
-def setup_optimizer_and_scheduler(model, cfg) -> Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler._LRScheduler]:
+def setup_optimizer_and_scheduler(
+    model, cfg
+) -> Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler._LRScheduler]:
     """set optimizer and scheduler"""
     # initialize optimizer
     param_groups = build_param_lr_groups(model=model, cfg=cfg)
@@ -102,7 +108,9 @@ def setup_optimizer_and_scheduler(model, cfg) -> Tuple[torch.optim.Optimizer, to
     # print optimizer group info
     if dist.is_initialized() and dist.get_rank() == 0:
         for i, group in enumerate(optimizer.param_groups):
-            logger.info(f"LR Group {group['name']}: lr={group['lr']}, num_params={len(group['params'])}")
+            logger.info(
+                f"LR Group {group['name']}: lr={group['lr']}, num_params={len(group['params'])}"
+            )
 
     # initialize learning rate scheduler
     lr_scheduler = get_scheduler(
@@ -209,7 +217,12 @@ def main(cfg) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config-path", type=str, default="examples/robotics/conf/train/libero_qwengroot.yaml", help="Path to YAML config")
+    parser.add_argument(
+        "--config-path",
+        type=str,
+        default="examples/robotics/conf/train/libero_qwengroot.yaml",
+        help="Path to YAML config",
+    )
     args, clipargs = parser.parse_known_args()
 
     # Load YAML config & Convert CLI overrides to dotlist config
