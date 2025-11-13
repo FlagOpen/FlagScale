@@ -2290,6 +2290,11 @@ def train(
     extra_valid_dataset_provider=None,
 ):
     """Training function: run train_step desired number of times, run validation, checkpoint."""
+    # Import performance monitor hooks
+    from flagscale.runner.monitor.hooks import (
+        initialize_perf_monitor, perf_monitor_start_iteration,
+        perf_monitor_end_iteration, perf_monitor_end_training
+    )
     args = get_args()
     timers = get_timers()
 
@@ -2428,6 +2433,8 @@ def train(
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
     report_memory_flag = True
+    # Initialize performance monitor if enabled
+    perf_callback = initialize_perf_monitor(args)
     pre_hook_enabled = False
     should_exit = False
     exit_code = 0
@@ -2598,6 +2605,9 @@ def train(
 
         args.curr_iteration = iteration
 
+        # Performance monitor: start iteration
+        perf_monitor_start_iteration(iteration)
+
         ########## FlagScale Begin ##########
         if args.skip_samples_range or args.skip_iters_range:
             current_global_batch_size = get_current_global_batch_size()
@@ -2654,6 +2664,10 @@ def train(
             forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config, forward_backward_func
         )
         ft_integration.on_training_step_end()
+
+        # Performance monitor: end iteration
+        perf_monitor_end_iteration(iteration)
+
         if should_checkpoint:
             save_checkpoint_and_time(
                 iteration,
@@ -2895,6 +2909,9 @@ def train(
         ft_integration.shutdown()
         one_logger_utils.finish()
         sys.exit(exit_code)
+
+    # Performance monitor: training end
+    perf_monitor_end_training()
 
     return iteration, num_floating_point_operations_so_far
 
