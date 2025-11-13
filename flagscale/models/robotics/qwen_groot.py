@@ -260,7 +260,7 @@ def resize_images(images, target_size=(224, 224)):
         raise ValueError("Unsupported image type or structure.")
 
 
-def test_with_fake_sample(cfg):
+def dryrun_with_random_sample(cfg):
     """
     Test Qwen-GR00T model with fake data.
     """
@@ -300,7 +300,7 @@ def test_with_fake_sample(cfg):
     model.save_pretrained()
 
 
-def test_with_dataloader(cfg):
+def dryrun_with_dataloader(cfg):
     model: Qwen_GR00T = Qwen_GR00T(cfg)
 
     from megatron.energon import WorkerConfig, get_loader, get_train_dataset
@@ -342,8 +342,13 @@ if __name__ == "__main__":
         default="./examples/robobrain_x0_5/conf/train/libero_qwengroot.yaml",
         help="Path to YAML config",
     )
+    parser.add_argument("--dryrun-dataloader", action="store_true")
+    parser.add_argument("--dryrun-random", action="store_true")
+
     args, clipargs = parser.parse_known_args()
     cfg = OmegaConf.load(args.config_yaml)
 
-    # test_with_fake_sample(cfg)
-    test_with_dataloader(cfg)
+    if args.dryrun_dataloader:
+        dryrun_with_dataloader(cfg)
+    if args.dryrun_random:
+        dryrun_with_random_sample(cfg)

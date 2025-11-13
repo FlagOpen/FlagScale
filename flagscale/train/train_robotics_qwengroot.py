@@ -1,42 +1,27 @@
+# Adopted from starVLA/starVLA:
+# https://github.com/starVLA/starVLA/blob/starVLA/starVLA/training/train_starvla.py
+# Below is the original copyright:
+
 # Copyright 2025 starVLA community. All rights reserved.
 # Licensed under the MIT License, Version 1.0 (the "License");
 # Implemented by [Jinhui YE / HKUST University] in [2025].
 
-
-"""
-StarVLA’s trainer is built directly on native PyTorch + Accelerate + DeepSpeed, keeping the loop explicit and easy to hack.
-Conventions:
-1. Store runtime state in dicts where possible (simplifies data info, procesing info, config, etc).  
-2. Use multiple dataloaders to adapt heterogeneous data types / task mixtures.  
-3. Put each training strategy in its own `trainer_*.py` file (avoid large if‑else chains).  
-"""
-
-
 import argparse
-import json
 import os
 import pathlib
 import platform
 import random
-import time
 
-from pathlib import Path
 from typing import Tuple
 
 import epath
 import numpy as np
 import torch
 import torch.distributed as dist
-import yaml
 
-from accelerate import Accelerator, DeepSpeedPlugin
-from accelerate.logging import get_logger
-from accelerate.utils import set_seed
 from omegaconf import OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
-from transformers import AutoProcessor, get_scheduler
+from transformers import get_scheduler
 
 import wandb
 
@@ -51,18 +36,6 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def build_param_lr_groups(model, cfg):
-    """
-    build multiple param groups based on cfg.trainer.learning_rate.
-    support specifying different learning rates for different modules, the rest use base.
-
-    Args:
-        vla: nn.Module model object
-        cfg: config object, requires cfg.trainer.learning_rate dictionary
-
-    Returns:
-        List[Dict]: param_groups that can be used to build optimizer with torch.optim
-    """
-
     lr_cfg = cfg.trainer.learning_rate
     base_lr = lr_cfg.get("base", 1e-4)  # default base learning rate
 
@@ -224,11 +197,5 @@ if __name__ == "__main__":
         help="Path to YAML config",
     )
     args, clipargs = parser.parse_known_args()
-
-    # Load YAML config & Convert CLI overrides to dotlist config
     cfg = OmegaConf.load(args.config_path)
-    # dotlist = normalize_dotlist_args(clipargs)  # Normalize CLI args to dotlist format
-    # cli_cfg = OmegaConf.from_dotlist(dotlist)
-    # cfg = OmegaConf.merge(cfg, cli_cfg)
-
     main(cfg)
