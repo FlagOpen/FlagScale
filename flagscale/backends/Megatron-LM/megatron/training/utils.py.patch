@@ -1,5 +1,5 @@
 diff --git a/megatron/training/utils.py b/megatron/training/utils.py
-index cef711607..0c01f30e1 100644
+index cef711607..dcca6ca3b 100644
 --- a/megatron/training/utils.py
 +++ b/megatron/training/utils.py
 @@ -43,6 +43,8 @@ from megatron.core.utils import (
@@ -177,8 +177,3 @@ index cef711607..0c01f30e1 100644
  
          elif mpu.is_pipeline_last_stage():
              # Multi-Token Prediction (MTP) layers need tokens and position_ids to calculate embedding.
-@@ -679,3 +749,4 @@ def get_nvtx_range():
-         def dummy_range(msg):
-             yield
-         return dummy_range
-+
