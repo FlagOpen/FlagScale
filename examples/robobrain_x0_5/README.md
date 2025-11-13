@@ -17,27 +17,30 @@ cd FlagScale/
 Install train and inference env according to [README](https://github.com/FlagOpen/FlagScale/blob/main/README.md) 
 
 # Download Model
-Checkpoint is not publish yet.
 
-Directory structure:
 ```sh
-|-- action_model.pt
-|-- backbone
-|   |-- added_tokens.json
-|   |-- chat_template.jinja
-|   |-- config.json
-|   |-- generation_config.json
-|   |-- merges.txt
-|   |-- model-00001-of-00002.safetensors
-|   |-- model-00002-of-00002.safetensors
-|   |-- model.safetensors.index.json
-|   |-- preprocessor_config.json
-|   |-- special_tokens_map.json
-|   |-- tokenizer.json
-|   |-- tokenizer_config.json
-|   |-- video_preprocessor_config.json
-|   `-- vocab.json
-`-- config.yaml
+git lfs install
+
+mkdir -p /models/BAAI/
+cd /models/BAAI/
+git clone https://huggingface.co/BAAI/RoboBrain-X0-Preview
+```
+
+If you don't have access to the international internet, download from modelscope.
+
+```sh
+mkdir -p /models/
+cd /models/
+modelscope download --model BAAI/RoboBrain-X0-Preview --local_dir BAAI/RoboBrain-X0-Preview
+```
+
+# Download Tokenzier
+
+```sh
+mkdir -p /models/physical-intelligence/
+cd /models/physical-intelligence/
+git lfs install
+git clone https://huggingface.co/physical-intelligence/fast
 ```
 
 # Serving

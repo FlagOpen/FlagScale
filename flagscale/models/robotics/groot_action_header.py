@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 import torch
 import torch.nn.functional as F
-
 from torch import nn
 from torch.distributions import Beta
 from transformers import PretrainedConfig
@@ -273,7 +272,6 @@ class FlowmatchingActionHead(nn.Module):
 
         # action_mask: for counting valid dimensions in the last axis, used for loss computation
         actual_action_dim = actions.shape[-1]
-
         # Ensure actions last dim matches D_action, pad with zeros if needed
         D_action = self.config.action_dim
         if actions.shape[-1] < D_action:
@@ -351,7 +349,6 @@ class FlowmatchingActionHead(nn.Module):
 
         num_steps = self.num_inference_timesteps
         dt = 1.0 / num_steps
-
         state_features = self.state_encoder(state) if state is not None else None
 
         # Run denoising steps.

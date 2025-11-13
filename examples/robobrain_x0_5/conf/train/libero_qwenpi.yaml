@@ -1,0 +1,108 @@
+run_id: starvla
+run_root_dir: results/Checkpoints
+seed: 42
+trackers: [jsonl, wandb]
+wandb_entity: your_wandb_entity
+wandb_project: llavavla
+is_debug: false
+batch_size: 1
+resume: false
+checkpoint_dir: results/Checkpoints
+exp_name: starvla
+project_name: starvla
+wandb_enabled: false
+output_directory: results/Checkpoints
+log_freq: 10
+train_steps: 100
+
+framework:
+  name: QwenPI
+  qwenvl:
+    base_vlm: /models/BAAI/RoboBrain-X0-Preview
+    # attn_implementation: flash_attention_2
+    attn_implementation: eager
+    vl_hidden_dim: 2048
+  dino:
+    dino_backbone: dinov2_vits14
+  action_model:
+    input_embedding_dim: 2048
+    hidden_size: 2048
+    action_model_type: DiT-B
+    action_hidden_dim: 768
+    action_dim: 7
+    state_dim: 7
+    use_ema: false
+    future_action_window_size: 7
+    past_action_window_size: 0
+    repeated_diffusion_steps: 8
+    add_pos_embed: true
+    max_seq_len: 1024
+    action_horizon: 8
+    noise_beta_alpha: 1.5
+    noise_beta_beta: 1.0
+    noise_s: 0.999
+    num_timestep_buckets: 1000
+    num_inference_timesteps: 4
+    num_target_vision_tokens: 32
+    diffusion_model_cfg:    # DiT Transformers parameters
+      attention_head_dim: 64
+      cross_attention_dim: 2048 # VLM dim
+      dropout: 0.2
+      final_dropout: true
+      interleave_self_attention: true
+      norm_type: "ada_norm"
+      num_attention_heads: 32
+      num_layers: 16
+      output_dim: 1024
+      positional_embeddings: null
+  
+  reduce_in_full_precision: true
+
+
+datasets:
+  task_encoder:
+    vision_root: ""
+    state_key: eepose
+    action_horizon: 7
+    action_key: eepose
+  data_path: /repos/flagscale_new_robotics/FlagScale/demo_0913_n2/wds-1
+
+
+trainer:
+  pretrained_checkpoint: /share/project/section/robovla/ref/starVLA/playground/Checkpoints/libero_qwenpi_8gpu_1029/checkpoints/steps_5000_pytorch_model.pt
+  reload_modules: ""
+  epochs: 10
+  max_train_steps: 100000
+  num_warmup_steps: 2000
+  save_interval: 5000
+  eval_interval: 500
+  learning_rate:
+    base: 2.5e-05
+    qwen_vl_interface: 1.0e-05
+    action_model: 1.0e-04
+  lr_scheduler_type: cosine_with_min_lr
+  scheduler_specific_kwargs:
+    min_lr: 1.0e-06
+  freeze_modules: ''
+  loss_scale:
+    vla: 1.0
+    vlm: 0.1
+  max_grad_norm: 1.0
+  warmup_ratio: 0.1
+  weight_decay: 0.0
+  logging_frequency: 10
+  gradient_clipping: 1.0
+  gradient_accumulation_steps: 1
+
+  optimizer:
+    name: AdamW
+    betas: [0.9, 0.95]
+    eps: 1.0e-08
+    weight_decay: 1.0e-08
+
+  # parameters to be determined
+  is_resume: false
+  resume_epoch: null
+  resume_step: null
+  enable_gradient_checkpointing: true
+  enable_mixed_precision_training: true

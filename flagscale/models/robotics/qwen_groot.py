@@ -90,31 +90,32 @@ class Qwen_GR00T(PreTrainedModel):
         # Step 4: Action Expert Forward and Loss
         with torch.autocast("cuda", dtype=torch.float32):
             # [B, T_full, action_dim]
-            actions = torch.tensor(
-                np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype
-            )
-            actions_target = actions[
-                :, -(self.future_action_window_size + 1) :, :
-            ]  # (B, chunk_len, action_dim)
+            if isinstance(actions[0], torch.Tensor):
+                actions = torch.stack(actions, dim=0).to(device=last_hidden.device, dtype=last_hidden.dtype)
+            else:
+                actions = torch.tensor(np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype) 
+            actions_target = actions[:, -(self.future_action_window_size+1):, :]  # (B, chunk_len, action_dim)
 
             repeated_diffusion_steps = (
-                self.config.trainer.get("repeated_diffusion_steps", 4)
-                if self.config and self.config.trainer
-                else 4
+                self.config.trainer.get("repeated_diffusion_steps", 4) if self.config and self.config.trainer else 4
             )
             actions_target_repeated = actions_target.repeat(repeated_diffusion_steps, 1, 1)
             last_hidden_repeated = last_hidden.repeat(repeated_diffusion_steps, 1, 1)
-
+            
             state_repeated = None
             if state is not None:
-                state = torch.tensor(
-                    np.array(state), device=last_hidden.device, dtype=last_hidden.dtype
-                )
+
+                if isinstance(state[0], torch.Tensor):
+                    state = torch.stack(state, dim=0).to(device=last_hidden.device, dtype=last_hidden.dtype)
+                else:
+                    state = torch.tensor(
+                        np.array(state), device=last_hidden.device, dtype=last_hidden.dtype
+                    )
                 state_repeated = state.repeat(repeated_diffusion_steps, 1, 1)
 
-            action_loss = self.action_model(
-                last_hidden_repeated, actions_target_repeated, state_repeated
-            )  # (B, chunk_len, action_dim)
+            action_loss = self.action_model(last_hidden_repeated, actions_target_repeated, state_repeated)  # (B, chunk_len, action_dim)
+
+
 
         return {"action_loss": action_loss}
 
@@ -247,3 +248,81 @@ def resize_images(images, target_size=(224, 224)):
         return [resize_images(img, target_size) for img in images]
     else:
         raise ValueError("Unsupported image type or structure.")
+
+
+def test_with_fake_sample(cfg):
+    """
+    Test Qwen-GR00T model with fake data.
+    """
+    # model: Qwen_GR00T = Qwen_GR00T(cfg)
+    model = Qwen_GR00T.from_pretrained(cfg.checkpoint_dir)
+    # fake sample 
+    image = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+    # Create a sample
+    sample = {
+        "action": np.random.uniform(-1, 1, size=(16, 7)).astype(np.float16), # action_chunk, action_dim
+        "image": [image, image], # two views
+        "lang": "This is a fake for testing.",
+        "state" : np.random.uniform(-1, 1, size=(1, 7)).astype(np.float16), # chunk, state_dim
+    }
+
+    batch  = [sample, sample]  # batch size 2
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+
+    # test predict action
+    for _ in range(3):
+        predict_output = model.predict_action(batch_images=[batch[0]["image"]], instructions=[batch[0]["lang"]], state=[batch[0]["state"]])
+        normalized_actions = predict_output['normalized_actions']
+        print(f"Unnormalized Action: {normalized_actions.shape}")
+        print(f"{normalized_actions[0,0,:]=}")
+
+    forward_output = model(batch)
+    action_loss = forward_output['action_loss']
+    print(f"Action Loss: {action_loss.item()}")
+
+    model.save_pretrained()
+
+
+def test_with_dataloader(cfg):
+    model: Qwen_GR00T = Qwen_GR00T(cfg)
+
+    from megatron.energon import WorkerConfig, get_loader, get_train_dataset
+    from tools.datasets.vla.data.dataset_helpers_np_pil import TaskEncoder
+
+    ds = get_train_dataset(
+        cfg.datasets.data_path,
+        batch_size=1,
+        shuffle_buffer_size=100,
+        max_samples_per_sequence=100,
+        worker_config=WorkerConfig.default_worker_config(num_workers=1, data_parallel_group=None),
+        task_encoder=TaskEncoder(cfg.datasets.task_encoder),
+        repeat=True,
+    )
+    vla_train_dataloader = get_loader(ds)
+    data_iter = iter(vla_train_dataloader)
+    batch = next(data_iter)
+    batch = get_batch(batch)
+
+    # try get model
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    model(batch)
+    forward_output = model(batch)
+    action_loss = forward_output['action_loss']
+    print(f"Action Loss: {action_loss.item()}")
+
+    action = model.predict_action(batch_images=[batch[0]["image"]], instructions=[batch[0]["lang"]])
+    print(f"Action inference: {action['normalized_actions'].shape}")
+   
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_yaml", type=str, default="./examples/robobrain_x0_5/conf/train/libero_qwengroot.yaml", help="Path to YAML config")
+    args, clipargs = parser.parse_known_args()
+    cfg = OmegaConf.load(args.config_yaml)
+
+    # test_with_fake_sample(cfg)
+    test_with_dataloader(cfg)
+ 
