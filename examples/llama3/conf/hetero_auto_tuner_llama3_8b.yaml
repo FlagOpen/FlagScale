@@ -4,7 +4,7 @@ defaults:
 
 experiment:
   exp_name: llama3_8b_hetero_auto_tuner
-  exp_dir: /nfs/syq/test/FlagScale/${experiment.exp_name}
+  exp_dir: /nfs/syq/test/pr1113/FlagScale/${experiment.exp_name}
   task:
     type: train
     backend: megatron
@@ -41,24 +41,33 @@ experiment:
   
   auto_tuner:
     space:
-      hetero_pipeline_layer_split: 'auto'
+      hetero_pipeline_layer_split: [[16,16], [18,14]]
       #hetero_pipeline_layer_split: [[12,12], [10,14]]
       hetero_process_meshes: ['auto', 1, 1, 'auto', 'auto', 'auto', 1, 1, 'auto', 'auto']
+      #hetero_process_meshes: [1, 1, 1, 8,1,[1,2],1, 1, 'auto', 1]
       hetero_inter_mesh_max_layer_diff: 4
       hetero_intra_mesh_max_layer_diff: 2
       use_distributed_optimizer: [true]
-      sequence_parallel: [true]
+      #sequence_parallel: [true]
+      sequence_parallel: [true]  
       #num_layers_per_virtual_pipeline_stage: [1]
       #context_parallel_size: [1]
       #expert_model_parallel_size: [1]
-      micro_batch_size: [1,2]
-      use_recompute: [true,false]
-      recompute_granularity_per_stage_micro_batch: "auto"
-      recompute_method_per_stage_micro_batch: "auto"
-      recompute_num_layers_per_stage_micro_batch: "auto"
+      micro_batch_size: [1,2,4]
+      use_recompute: [false]
+      #recompute_method: "auto"
+      #recompute_granularity: "auto"
+      #recompute_num_layers: "auto"
+    hetero_memory_model:
+      gpu_memory: 
+        A800: 60000  
+        mlu590: 50000
+        #gpu_utilization: [0.2, 0.8]
+        
     control:
       max_time_per_task: 600
       train_iters: 3
+      run_best: false
 
 device_type_specific:
   mlu590:
