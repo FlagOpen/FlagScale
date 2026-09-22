@@ -337,6 +337,7 @@ class LanguageTransformerBlock(TransformerBlock):
                 if self._loop_enabled:
                     print(
                         f"[Loop] loop execution (checkpointed), "
+                        f"loop_type='{self.config.loop_type}', "
                         f"exec_steps={len(self._execution_plan)}, "
                         f"scale={self._loop_residual_scale}",
                         flush=True,
@@ -367,6 +368,7 @@ class LanguageTransformerBlock(TransformerBlock):
                 if self._loop_enabled:
                     print(
                         f"[Loop] loop execution (non-checkpointed), "
+                        f"loop_type='{self.config.loop_type}', "
                         f"exec_steps={len(self._execution_plan)}, "
                         f"scale={self._loop_residual_scale}",
                         flush=True,
