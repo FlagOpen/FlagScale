@@ -174,8 +174,8 @@ model:
   
   ## Loop Transformer (SMELT recipe): loop middle 50% layers twice, scale 1/r
   loop_start_layer: 16       # 0-based global index, inclusive
-  loop_end_layer: 36         # 0-based global index, exclusive; span = layer 10..29
-  num_loop_iterations: 2     # loop twice → effective depth = 10 + 20*2 + 10 = 60
+  loop_end_layer: 36         # 0-based global index, exclusive
+  num_loop_iterations: 2     # loop twice → effective depth: 60 layers
   loop_residual_scale: 0.5   # 1/r = 1/2, applied to all sublayer residuals in loop span
   loop_type: block-wise
   loop_block_size: 4

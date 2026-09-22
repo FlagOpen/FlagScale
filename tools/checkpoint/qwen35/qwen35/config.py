@@ -112,6 +112,8 @@ class Config:
         self.loop_end_layer = cfg.get("loop_end_layer", None)
         self.num_loop_iterations = cfg.get("num_loop_iterations", 2)
         self.loop_residual_scale = cfg.get("loop_residual_scale", None)
+        self.loop_type = cfg.get("loop_type", "module-wise")
+        self.loop_block_size = cfg.get("loop_block_size", None)
         self._validate_loop_config()
 
         # MTP params: optional
@@ -164,6 +166,27 @@ class Config:
             raise ValueError(
                 f"loop_residual_scale must be positive, got {self.loop_residual_scale}."
             )
+        _valid_loop_types = {"module-wise", "block-wise"}
+        if self.loop_type not in _valid_loop_types:
+            raise ValueError(
+                f"loop_type must be one of {_valid_loop_types}, got '{self.loop_type}'."
+            )
+        if self.loop_type == "block-wise":
+            if self.loop_block_size is None:
+                raise ValueError(
+                    "loop_block_size must be set when loop_type='block-wise'."
+                )
+            loop_span = self.loop_end_layer - self.loop_start_layer
+            if self.loop_block_size <= 0 or self.loop_block_size > loop_span:
+                raise ValueError(
+                    f"loop_block_size must be in [1, {loop_span}], "
+                    f"got {self.loop_block_size}."
+                )
+            if loop_span % self.loop_block_size != 0:
+                raise ValueError(
+                    f"loop_block_size ({self.loop_block_size}) must evenly divide "
+                    f"loop span ({loop_span})."
+                )
 
     @property
     def pp_layer_counts(self):

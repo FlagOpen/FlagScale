@@ -208,8 +208,12 @@ class BaseConverter:
     def _build_loop_execution_plan(self):
         """Build execution plan mapping HF layer indices to physical layers.
 
-        Returns a list of ``(hf_layer_idx, physical_layer_idx, in_loop)``
-        tuples.  For non-loop models this is never called.
+        Returns a list of ``(hf_layer_idx, physical_layer_idx, in_loop,
+        iteration)`` tuples.  For non-loop models this is never called.
+
+        Supports two loop types:
+        - module-wise: ABCD → ABCDABCD (entire loop range repeated)
+        - block-wise:  ABCD with block_size=2 → ABABCDCD (each block repeated)
         """
         cfg = self.cfg
         plan = []
@@ -218,11 +222,23 @@ class BaseConverter:
         for phys in range(cfg.loop_start_layer):
             plan.append((hf_idx, phys, False, -1))
             hf_idx += 1
-        # Loop region repeated num_loop_iterations times
-        for iteration in range(cfg.num_loop_iterations):
-            for phys in range(cfg.loop_start_layer, cfg.loop_end_layer):
-                plan.append((hf_idx, phys, True, iteration))
-                hf_idx += 1
+        # Loop region
+        loop_type = cfg.loop_type
+        if loop_type == "module-wise":
+            for iteration in range(cfg.num_loop_iterations):
+                for phys in range(cfg.loop_start_layer, cfg.loop_end_layer):
+                    plan.append((hf_idx, phys, True, iteration))
+                    hf_idx += 1
+        elif loop_type == "block-wise":
+            block_size = cfg.loop_block_size
+            for block_start in range(cfg.loop_start_layer, cfg.loop_end_layer, block_size):
+                block_end = min(block_start + block_size, cfg.loop_end_layer)
+                for iteration in range(cfg.num_loop_iterations):
+                    for phys in range(block_start, block_end):
+                        plan.append((hf_idx, phys, True, iteration))
+                        hf_idx += 1
+        else:
+            raise ValueError(f"Unsupported loop_type='{loop_type}'.")
         # Coda: physical layers [loop_end, num_layers)
         for phys in range(cfg.loop_end_layer, cfg.num_layers):
             plan.append((hf_idx, phys, False, -1))
