@@ -2070,6 +2070,10 @@ def setup_model_and_optimizer(
             )
         opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
+    # Build param-to-name map for per-module grad norm logging.
+    if optimizer is not None and getattr(config, 'log_per_module_grad_norm', False):
+        optimizer.build_param_to_name_map(model)
+
     one_logger and one_logger.log_metrics({"app_build_optimzer_finish_time": one_logger_utils.get_timestamp_in_ms()})
 
     if args.moe_use_upcycling:
@@ -2414,6 +2418,7 @@ def training_log(
     max_attention_logit,
     pg_collection=None,
     is_first_iteration=False,
+    per_module_grad_norm=None,
 ):
     """Log training information such as losses, timing, ...."""
     args = get_args()
@@ -2554,6 +2559,16 @@ def training_log(
                 writer.add_scalar('grad-norm vs samples', grad_norm, args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'grad-norm': grad_norm}, iteration)
+        if per_module_grad_norm is not None:
+            for module_type, module_norm in per_module_grad_norm.items():
+                key = f'grad-norm-{module_type}'
+                if writer:
+                    writer.add_scalar(key, module_norm, iteration)
+                    writer.add_scalar(
+                        f'{key} vs samples', module_norm, args.consumed_train_samples
+                    )
+                if wandb_writer:
+                    wandb_writer.log({key: module_norm}, iteration)
         if num_zeros_in_grad is not None:
             if writer:
                 writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
@@ -2729,6 +2744,10 @@ def training_log(
         log_string += f' loss scale: {loss_scale:.1f} |'
         if grad_norm is not None:
             log_string += f' grad norm: {grad_norm:.3f} |'
+        if per_module_grad_norm is not None:
+            log_string += ' grad norm [' + ', '.join(
+                f'{k}={v:.4f}' for k, v in per_module_grad_norm.items()
+            ) + '] |'
         if num_zeros_in_grad is not None:
             log_string += f' num zeros: {num_zeros_in_grad} |'
         if params_norm is not None:
@@ -3749,6 +3768,7 @@ def train(
             max_attention_logit,
             pg_collection=model_pg_collection,
             is_first_iteration=is_first_iteration,
+            per_module_grad_norm=getattr(optimizer, 'per_module_grad_norm', None) if optimizer is not None else None,
         )
         is_first_iteration = False
 
