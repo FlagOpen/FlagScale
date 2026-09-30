@@ -139,6 +139,7 @@ class LanguageTransformerBlock(TransformerBlock):
                             inference_context=None,
                             packed_seq_params=packed_seq_params,
                             loop_residual_scale=loop_residual_scale,
+                            loop_iter=loop_iter if self._loop_enabled else None,
                         )
 
                 return hidden_states, context
@@ -416,6 +417,7 @@ class LanguageTransformerBlock(TransformerBlock):
                             sequence_len_offset=sequence_len_offset,
                             padding_mask=padding_mask,
                             loop_residual_scale=loop_residual_scale,
+                            loop_iter=loop_iter if self._loop_enabled else None,
                         )
 
                     # Deepstack visual embedding addition (only on first loop visit)
