@@ -107,8 +107,9 @@ class LanguageTransformerBlock(TransformerBlock):
                     layer = self._get_layer(local_idx)
 
                     loop_residual_scale = (
-                        self._loop_residual_scale
+                        self._loop_residual_scales[loop_iter]
                         if self._loop_enabled and loop_iter >= 0
+                        and self._loop_residual_scales is not None
                         else None
                     )
 
@@ -340,7 +341,7 @@ class LanguageTransformerBlock(TransformerBlock):
                         f"[Loop] loop execution (checkpointed), "
                         f"loop_type='{self.config.loop_type}', "
                         f"exec_steps={len(self._execution_plan)}, "
-                        f"scale={self._loop_residual_scale}",
+                        f"scales={self._loop_residual_scales}",
                         flush=True,
                     )
                 else:
@@ -371,7 +372,7 @@ class LanguageTransformerBlock(TransformerBlock):
                         f"[Loop] loop execution (non-checkpointed), "
                         f"loop_type='{self.config.loop_type}', "
                         f"exec_steps={len(self._execution_plan)}, "
-                        f"scale={self._loop_residual_scale}",
+                        f"scales={self._loop_residual_scales}",
                         flush=True,
                     )
                 else:
@@ -380,10 +381,10 @@ class LanguageTransformerBlock(TransformerBlock):
                     layer = self.layers[local_idx]
 
                     # Determine loop residual scale for this execution step
-                    # Determine loop residual scale for this execution step
                     loop_residual_scale = (
-                        self._loop_residual_scale
+                        self._loop_residual_scales[loop_iter]
                         if self._loop_enabled and loop_iter >= 0
+                        and self._loop_residual_scales is not None
                         else None
                     )
 
