@@ -112,6 +112,9 @@ class Config:
         self.loop_end_layer = cfg.get("loop_end_layer", None)
         self.num_loop_iterations = cfg.get("num_loop_iterations", 2)
         self.loop_residual_scale = cfg.get("loop_residual_scale", None)
+        # Normalize list format: [0.7, 0.3] -> keep as list; single float -> keep as float
+        if isinstance(self.loop_residual_scale, list) and len(self.loop_residual_scale) == 1:
+            self.loop_residual_scale = self.loop_residual_scale[0]
         self.loop_type = cfg.get("loop_type", "module-wise")
         self.loop_block_size = cfg.get("loop_block_size", None)
         self._validate_loop_config()
@@ -162,10 +165,16 @@ class Config:
             raise ValueError(
                 f"num_loop_iterations must be >= 2, got {self.num_loop_iterations}."
             )
-        if self.loop_residual_scale is not None and self.loop_residual_scale <= 0:
-            raise ValueError(
-                f"loop_residual_scale must be positive, got {self.loop_residual_scale}."
-            )
+        if self.loop_residual_scale is not None:
+            if isinstance(self.loop_residual_scale, list):
+                if any(s <= 0 for s in self.loop_residual_scale):
+                    raise ValueError(
+                        f"All loop_residual_scale values must be positive, got {self.loop_residual_scale}."
+                    )
+            elif self.loop_residual_scale <= 0:
+                raise ValueError(
+                    f"loop_residual_scale must be positive, got {self.loop_residual_scale}."
+                )
         _valid_loop_types = {"module-wise", "block-wise"}
         if self.loop_type not in _valid_loop_types:
             raise ValueError(

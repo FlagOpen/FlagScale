@@ -248,7 +248,7 @@ class BaseConverter:
         )
         return plan
 
-    def _absorb_loop_scale(self, hf_sd, hf_pfx, phys_idx):
+    def _absorb_loop_scale(self, hf_sd, hf_pfx, phys_idx, iteration=0):
         """Multiply ``loop_residual_scale`` into output-projection weights.
 
         Scale is absorbed into the last linear projection of both the
@@ -260,8 +260,16 @@ class BaseConverter:
         produces identical outputs without any runtime modification.
         """
         cfg = self.cfg
-        scale = cfg.loop_residual_scale
-        if scale is None or scale == 1.0:
+        raw_scale = cfg.loop_residual_scale
+        if raw_scale is None:
+            return
+        # Per-iteration (hybrid) scale: each loop iteration has its own HF
+        # layer copy, so absorb the corresponding scale into that copy.
+        if isinstance(raw_scale, list):
+            scale = raw_scale[iteration] if iteration < len(raw_scale) else raw_scale[-1]
+        else:
+            scale = raw_scale
+        if scale == 1.0:
             return
         freq = cfg.linear_attention_freq
 
@@ -324,9 +332,13 @@ class BaseConverter:
 
             if in_loop:
                 scale = cfg.loop_residual_scale
+                if isinstance(scale, list):
+                    iter_scale = scale[iteration] if iteration < len(scale) else scale[-1]
+                else:
+                    iter_scale = scale
                 print(
                     f"  HF layer {hf_idx:>3d} <- physical {phys_idx:>3d} "
-                    f"[{layer_type}] loop iter={iteration}, scale={scale}"
+                    f"[{layer_type}] loop iter={iteration}, scale={iter_scale}"
                 )
             elif cfg.is_loop:
                 region = "prelude" if phys_idx < cfg.loop_start_layer else "coda"
@@ -396,7 +408,7 @@ class BaseConverter:
 
             # Absorb loop_residual_scale into output projection weights
             if in_loop:
-                self._absorb_loop_scale(hf_sd, hf_pfx, phys_idx)
+                self._absorb_loop_scale(hf_sd, hf_pfx, phys_idx, iteration=iteration)
 
         mk = "language_model.decoder.final_layernorm.weight"
         if mk in full_sd:

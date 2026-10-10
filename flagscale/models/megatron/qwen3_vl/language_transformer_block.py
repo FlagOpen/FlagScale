@@ -456,6 +456,21 @@ class LanguageTransformerBlock(TransformerBlock):
         if not self.pre_process and len(self.layers) == 0 and not self.final_layernorm:
             hidden_states = hidden_states.clone()
 
+        # --- Collect GDN decay diagnostic references (lazy, no device sync) ---
+        if getattr(self.config, 'gdn_spike_diag_threshold', None) is not None:
+            self._gdn_decay_diag = {}
+            for local_idx, layer in enumerate(self.layers):
+                attn = getattr(layer, 'self_attention', None)
+                if attn is None:
+                    attn = getattr(layer, 'inner', None)
+                    if attn is not None:
+                        attn = getattr(attn, 'self_attention', None)
+                g_ref = getattr(attn, '_g_diag_ref', None) if attn is not None else None
+                if g_ref is not None:
+                    global_layer = layer.layer_number - 1  # 0-based, align with param names
+                    self._gdn_decay_diag[global_layer] = g_ref
+                    attn._g_diag_ref = None  # clear for next step
+
         return hidden_states
 
 
