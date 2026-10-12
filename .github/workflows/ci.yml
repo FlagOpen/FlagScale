@@ -93,5 +93,3 @@ jobs:
     uses: ./.github/workflows/_platform_pipeline.yml
     with:
       platform: ${{ matrix.platform }}
-    secrets:
-      FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}

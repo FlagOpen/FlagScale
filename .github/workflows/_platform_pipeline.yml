@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Reusable per-platform pipeline for FlagScale CI:
-#   prepare_dependencies → all_tests_common → Feishu notification.
+#   prepare_dependencies → all_tests_common.
 # Called from ci.yml with a platform matrix so each platform runs independently.
 
 name: Platform Pipeline
@@ -25,9 +25,6 @@ on:
         required: true
         type: string
         description: Platform identifier (must match a .github/configs/*.yml stem)
-    secrets:
-      FEISHU_WEBHOOK:
-        required: false
 
 jobs:
   prepare:
@@ -46,35 +43,3 @@ jobs:
       megatron_artifact_available: ${{ needs.prepare.outputs.megatron_artifact_available }}
       te_fl_cache_key: ${{ needs.prepare.outputs.te_fl_cache_key }}
       te_fl_artifact_available: ${{ needs.prepare.outputs.te_fl_artifact_available }}
-
-  # Derive overall_result from whichever stage failed first so the Feishu card
-  # accurately reflects prepare failures (test.result would be 'skipped').
-  overall:
-    name: compute-result / ${{ inputs.platform }}
-    if: always()
-    needs: [prepare, test]
-    runs-on: ubuntu-latest
-    outputs:
-      result: ${{ steps.r.outputs.result }}
-    steps:
-      - id: r
-        run: |
-          prep="${{ needs.prepare.result }}"
-          test="${{ needs.test.result }}"
-          if [[ "$prep" != "success" ]]; then
-            echo "result=$prep" >> "$GITHUB_OUTPUT"
-          else
-            echo "result=$test" >> "$GITHUB_OUTPUT"
-          fi
-
-  notify:
-    name: notify / ${{ inputs.platform }}
-    if: always()
-    needs: [prepare, test, overall]
-    uses: ./.github/workflows/_feishu_notify.yml
-    with:
-      platform: ${{ inputs.platform }}
-      overall_result: ${{ needs.overall.outputs.result }}
-      run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    secrets:
-      FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
