@@ -242,7 +242,7 @@ jobs:
         env:
           JOB_RESULTS: ${{ toJSON(needs) }}
         run: |
-          python3 - <<'PY'
+          python3 -S - <<'PY'
           import json
           import os
           import sys

@@ -39,7 +39,7 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../scripts/set_env_common.sh"
         ci_resolve_python_bin
-        "$CI_PYTHON_BIN" "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
+        "$CI_PYTHON_BIN" -S "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
           "$KIND" "$RUNTIME_DIR" --probe --output "$GITHUB_OUTPUT"
 
     - name: Clean incomplete runtime before attempt 1
@@ -71,7 +71,7 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../scripts/set_env_common.sh"
         ci_resolve_python_bin
-        "$CI_PYTHON_BIN" "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
+        "$CI_PYTHON_BIN" -S "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
           "$KIND" "$RUNTIME_DIR" --probe --output "$GITHUB_OUTPUT"
 
     - name: Clean incomplete runtime before attempt 2
@@ -103,7 +103,7 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../scripts/set_env_common.sh"
         ci_resolve_python_bin
-        "$CI_PYTHON_BIN" "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
+        "$CI_PYTHON_BIN" -S "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
           "$KIND" "$RUNTIME_DIR" --probe --output "$GITHUB_OUTPUT"
 
     - name: Clean incomplete runtime before attempt 3
@@ -135,7 +135,7 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../scripts/set_env_common.sh"
         ci_resolve_python_bin
-        "$CI_PYTHON_BIN" "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
+        "$CI_PYTHON_BIN" -S "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
           "$KIND" "$RUNTIME_DIR" --probe --output "$GITHUB_OUTPUT"
 
     - name: Require complete runtime before installation
@@ -147,5 +147,5 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../scripts/set_env_common.sh"
         ci_resolve_python_bin
-        "$CI_PYTHON_BIN" "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
+        "$CI_PYTHON_BIN" -S "$GITHUB_ACTION_PATH/../../scripts/validate_prepared_runtime.py" \
           "$KIND" "$RUNTIME_DIR"

@@ -25,6 +25,11 @@ on:
         required: true
         type: string
         description: Device type (e.g., a100, a800, h100, generic)
+      unit_timeout_minutes:
+        required: false
+        type: number
+        default: 20
+        description: Unit test step budget including worker shutdown and coverage aggregation
       image:
         required: true
         type: string
@@ -344,7 +349,7 @@ jobs:
 
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
           exit $exit_code
-        timeout-minutes: 20
+        timeout-minutes: ${{ inputs.unit_timeout_minutes }}
 
       - name: Upload coverage report
         if: steps.unit_test.outcome == 'success'

@@ -26,6 +26,17 @@ validator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(validator)
 
 
+def startup_hook_guard(tmp_path):
+    """Detect accidental site initialization in standard-library subprocesses."""
+    directory = tmp_path / "startup-hook"
+    directory.mkdir()
+    marker = tmp_path / "startup-hook-used"
+    (directory / "sitecustomize.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('loaded')\n"
+    )
+    return directory, marker
+
+
 def run_common_helper(script: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", "-c", f'source "$1"\n{script}', "bash", str(COMMON_SCRIPT)],
@@ -310,7 +321,10 @@ def test_parallel_context_uses_training_overlay_namespace():
         ("success", "skipped", False),
     ],
 )
-def test_all_tests_reports_preparation_and_test_failures(prepare_result, test_result, should_pass):
+def test_all_tests_reports_preparation_and_test_failures(
+    tmp_path, prepare_result, test_result, should_pass
+):
+    startup_directory, startup_marker = startup_hook_guard(tmp_path)
     workflow = yaml.safe_load((ROOT / ".github/workflows/all_tests.yml").read_text())
     jobs = workflow["jobs"]
     summary = jobs["all_tests"]
@@ -328,6 +342,7 @@ def test_all_tests_reports_preparation_and_test_failures(prepare_result, test_re
         results[tests]["result"] = test_result
         env = os.environ.copy()
         env["JOB_RESULTS"] = json.dumps(results)
+        env["PYTHONPATH"] = str(startup_directory)
         result = subprocess.run(
             ["bash", "-e", "-c", step["run"]],
             env=env,
@@ -336,6 +351,7 @@ def test_all_tests_reports_preparation_and_test_failures(prepare_result, test_re
             timeout=30,
         )
         assert (result.returncode == 0) == should_pass, result.stdout + result.stderr
+        assert not startup_marker.exists(), "Status checks must not initialize vendor site hooks"
 
 
 def test_training_workflows_restore_prepared_dependencies_from_cache_or_artifact():
@@ -525,15 +541,30 @@ def test_reject_wheel_with_valid_zip_but_wrong_record(tmp_path):
 
 
 def test_probe_reports_invalid_and_strict_mode_fails(tmp_path):
+    startup_directory, startup_marker = startup_hook_guard(tmp_path)
+    env = {**os.environ, "PYTHONPATH": str(startup_directory)}
     output = tmp_path / "output"
     result = subprocess.run(
-        [sys.executable, str(SCRIPT), "te", str(tmp_path), "--probe", "--output", str(output)],
+        [
+            sys.executable,
+            "-S",
+            str(SCRIPT),
+            "te",
+            str(tmp_path),
+            "--probe",
+            "--output",
+            str(output),
+        ],
         capture_output=True,
+        env=env,
     )
     assert result.returncode == 0
     assert output.read_text() == "valid=false\n"
-    result = subprocess.run([sys.executable, str(SCRIPT), "te", str(tmp_path)], capture_output=True)
+    result = subprocess.run(
+        [sys.executable, "-S", str(SCRIPT), "te", str(tmp_path)], capture_output=True, env=env
+    )
     assert result.returncode == 1
+    assert not startup_marker.exists(), "Package validation must not initialize vendor site hooks"
 
 
 def evaluate_action_condition(condition, context):
@@ -570,6 +601,7 @@ def evaluate_action_condition(condition, context):
 @pytest.mark.parametrize("kind", ["te", "megatron"])
 def test_action_recovery(tmp_path, cached, available, success_at, expected_downloads, passed, kind):
     """Execute composite shell steps; inject partial/successful artifact downloads."""
+    startup_directory, startup_marker = startup_hook_guard(tmp_path)
     runtime = tmp_path / ("te-fl-wheel" if kind == "te" else "megatron-lm-fl-install")
     runtime.mkdir()
     if cached:
@@ -610,6 +642,7 @@ def test_action_recovery(tmp_path, cached, available, success_at, expected_downl
         env.update({key: resolve(value) for key, value in step.get("env", {}).items()})
         # Use the test interpreter for the action's dependency-free validator.
         env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
+        env["PYTHONPATH"] = str(startup_directory)
         result = subprocess.run(
             ["bash", "-e", "-o", "pipefail", "-c", step["run"]],
             env=env,
@@ -625,6 +658,7 @@ def test_action_recovery(tmp_path, cached, available, success_at, expected_downl
                 context[f"steps.{step['id']}.outputs.{key}"] = value
     assert downloads == expected_downloads
     assert (final_status == 0) == passed
+    assert not startup_marker.exists(), "Recovery validation must not initialize vendor site hooks"
 
 
 def test_installed_bytecode_without_hash_is_allowed(tmp_path):
@@ -653,6 +687,7 @@ def test_action_condition_rejects_unsupported_syntax(condition):
 
 @pytest.mark.parametrize("missing_interpreter", [False, True])
 def test_action_validation_uses_selected_interpreter(tmp_path, missing_interpreter):
+    startup_directory, startup_marker = startup_hook_guard(tmp_path)
     runtime = tmp_path / "runtime"
     make_runtime(runtime, "te")
     interpreter = tmp_path / "selected python"
@@ -678,6 +713,7 @@ def test_action_validation_uses_selected_interpreter(tmp_path, missing_interpret
         "GITHUB_OUTPUT": str(tmp_path / "output"),
         "INTERPRETER_MARKER": str(marker),
         "TEST_PYTHON": sys.executable,
+        "PYTHONPATH": str(startup_directory),
     }
     for step in validation_steps:
         result = subprocess.run(
@@ -696,3 +732,61 @@ def test_action_validation_uses_selected_interpreter(tmp_path, missing_interpret
         assert not marker.exists()
     else:
         assert marker.read_text().splitlines() == ["used"] * 5
+    assert not startup_marker.exists()
+
+
+@pytest.mark.parametrize(
+    "value,valid",
+    [
+        ("1", True),
+        ("20", True),
+        ("30", True),
+        ("360", True),
+        ("0", False),
+        ("361", False),
+        ("-1", False),
+        ("30.5", False),
+        ("true", False),
+        ("", False),
+        ("030", False),
+    ],
+)
+def test_unit_timeout_validation(value, valid):
+    loader = ROOT / "tools/install/utils/load_platform_config.sh"
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; validate_unit_timeout_minutes "$2" fixture.yml',
+            "bash",
+            str(loader),
+            value,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert (result.returncode == 0) == valid, result.stdout + result.stderr
+    if not valid:
+        assert "expected integer 1-360" in result.stderr
+
+
+def test_unit_timeout_is_forwarded_through_common_workflow():
+    common = yaml.safe_load((ROOT / ".github/workflows/all_tests_common.yml").read_text())
+    unit = yaml.safe_load((ROOT / ".github/workflows/unit_tests_common.yml").read_text())
+    trigger = unit.get("on", unit.get(True))
+    setting = trigger["workflow_call"]["inputs"]["unit_timeout_minutes"]
+    assert setting["type"] == "number" and setting["default"] == 20
+    assert (
+        common["jobs"]["checkout_and_config"]["outputs"]["unit_timeout_minutes"]
+        == "${{ steps.config.outputs.unit_timeout_minutes }}"
+    )
+    assert (
+        common["jobs"]["unit_tests"]["with"]["unit_timeout_minutes"]
+        == "${{ fromJson(needs.checkout_and_config.outputs.unit_timeout_minutes) }}"
+    )
+    steps = unit["jobs"]["unit_test"]["steps"]
+    run = next(step for step in steps if step["name"] == "Run unit tests")
+    assert run["timeout-minutes"] == "${{ inputs.unit_timeout_minutes }}"
+    enflame = yaml.safe_load((ROOT / ".github/configs/enflame.yml").read_text())
+    assert enflame["test_matrix"]["unit"]["timeout_minutes"] == 30
