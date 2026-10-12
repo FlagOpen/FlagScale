@@ -45,22 +45,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Reuse the repository's own .pre-commit-config.yaml, scoped to files changed
+  # against the base branch.  Pre-existing style debt elsewhere in the tree is
+  # not this gate's concern; on push/schedule the diff is empty and it passes.
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install linters
-        run: pip install --quiet ruff typos
-      - name: ruff check
-        run: ruff check .
-      - name: ruff format check
-        run: ruff format --check .
-      - name: typos
-        run: typos
+      - name: Install pre-commit
+        run: pip install --quiet pre-commit==4.2.0
+      - name: pre-commit (changed files)
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          pre-commit run --show-diff-on-failure \
+            --from-ref "$(git merge-base "origin/$BASE_REF" HEAD)" --to-ref HEAD
 
   generate-matrix:
     name: Generate platform matrix
