@@ -15,24 +15,6 @@
 name: all_tests
 
 on:
-  push:
-    branches: ["main"]
-    paths-ignore:
-      - 'docs/**'
-      - 'docker/**'
-      - 'tools/install/**'
-      - 'requirements/**'
-      - '.github/workflows/build_image.yml'
-      - '.github/workflows/build_image_common.yml'
-  pull_request:
-    branches: ["main"]
-    paths-ignore:
-      - 'docs/**'
-      - 'docker/**'
-      - 'tools/install/**'
-      - 'requirements/**'
-      - '.github/workflows/build_image.yml'
-      - '.github/workflows/build_image_common.yml'
   workflow_dispatch:
     inputs:
       platform:
