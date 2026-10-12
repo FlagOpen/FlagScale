@@ -9,7 +9,7 @@ import torch
 from torch import Tensor, nn
 
 
-from megatron.core.transformer.transformer_block import TransformerBlock
+from megatron.core.transformer.transformer_block import TransformerBlock, _GradScale
 from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.enums import Fp8Recipe
@@ -103,6 +103,15 @@ class LanguageTransformerBlock(TransformerBlock):
                 hidden_states, attention_mask, context, context_mask, rotary_pos_emb
             ):
                 for exec_idx in range(start, end):
+                    # Scale gradients at the prelude→loop boundary
+                    if (
+                        exec_idx == self._loop_entry_exec_idx
+                        and self.config.loop_prelude_grad_scale is not None
+                    ):
+                        hidden_states = _GradScale.apply(
+                            hidden_states, self.config.loop_prelude_grad_scale
+                        )
+
                     local_idx, loop_iter = self._execution_plan[exec_idx]
                     layer = self._get_layer(local_idx)
 
@@ -378,6 +387,15 @@ class LanguageTransformerBlock(TransformerBlock):
                 else:
                     print("[Loop] without loop execution (non-checkpointed)", flush=True)
                 for exec_step, (local_idx, loop_iter) in enumerate(self._execution_plan):
+                    # Scale gradients at the prelude→loop boundary
+                    if (
+                        exec_step == self._loop_entry_exec_idx
+                        and self.config.loop_prelude_grad_scale is not None
+                    ):
+                        hidden_states = _GradScale.apply(
+                            hidden_states, self.config.loop_prelude_grad_scale
+                        )
+
                     layer = self.layers[local_idx]
 
                     # Determine loop residual scale for this execution step
