@@ -309,6 +309,12 @@ from flagscale.train.perf_monitor.hooks import (
 
 from megatron.plugin.platform import get_platform
 cur_platform = get_platform()
+
+# Register FlagScale training overrides before decorated functions are called.
+from megatron.plugin_flagscale import register_overrides
+
+register_overrides()
+
 _fs_straggler_detector = None
 
 
@@ -554,7 +560,7 @@ def update_seqlen_stats_from_cu_seqlens(cu_seqlens):
     # (e.g. unit tests). Production always supplies a CUDA tensor.
     if _seqlen_stats_in_iteration is None:
         device = (
-            torch.device(f'cuda:{torch.cuda.current_device()}')
+            cur_platform.device()
             if torch.cuda.is_available()
             else cu_seqlens.device
         )
@@ -1425,7 +1431,7 @@ def pretrain(
 
     global _LEGACY_TRAIN_START_TIME
     ########## FlagScale Begin ##########
-    if "cpu:gloo" == torch.distributed.get_backend():
+    if torch.distributed.get_backend() == "cpu:gloo":
         start_time_tensor = torch.tensor([_LEGACY_TRAIN_START_TIME], dtype=torch.double, device='cpu')
     else:
         start_time_tensor = torch.tensor([_LEGACY_TRAIN_START_TIME], dtype=torch.double, device=cur_platform.device_name())
@@ -1808,15 +1814,15 @@ def pretrain(
                     write_to_tensorboard=not cfg_container.validation.skip_train,
                     non_loss_data_func=non_loss_data_func
                 )
-        ########## FlagScale End ##########
+    ########## FlagScale End ##########
 
     wandb_writer = get_wandb_writer()
     if wandb_writer:
         wandb_writer.finish()
 
-    ft_integration.on_checkpointing_start()
+    ft_integration.on_checkpointing_start(is_async_finalization=True, blocking=True)
     maybe_finalize_async_save(blocking=True, terminate=True)
-    ft_integration.on_checkpointing_end(is_async_finalization=True)
+    ft_integration.on_checkpointing_end(is_async_finalization=True, blocking=True)
 
     one_logger and one_logger.log_metrics(
         {'app_finish_time': one_logger_utils.get_timestamp_in_ms()}
@@ -2371,7 +2377,7 @@ def setup_model_and_optimizer(
             config, config_overrides = para_ctx.get_optimizer_config()
         ########## FlagScale End ##########
 
-        if config is None:  # FlagScale Modify
+        if para_ctx is None:  # FlagScale Modify
             config, config_overrides = get_megatron_optimizer_config(args)
         config.timers = timers
         if getattr(args, "use_mup", False):
@@ -2545,7 +2551,7 @@ def dummy_train_step(data_iterator):
             if tp_rank == 0:
                 batch = next(data_iterator)
                 for key in BATCH_KEYS:
-                    batch[key] = batch[key].cuda(non_blocking=True) if key in batch and batch[key] is not None else None
+                    batch[key] = batch[key].to(cur_platform.device(), non_blocking=True) if key in batch and batch[key] is not None else None
             batch = get_batch_on_this_tp_rank(
                 batch,
                 broadcast_src_rank=mpu.get_tensor_model_parallel_src_rank(),
@@ -2743,7 +2749,7 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
         log_max_attention_logit = 0
         if args.qk_clip or args.log_max_attention_logit:
             log_max_attention_logit = clip_qk(model, log_max_only=not args.qk_clip)
-    
+
         timers('optimizer').stop()
 
     # Checkpoint params with parameter names.
@@ -3323,11 +3329,11 @@ def save_checkpoint_and_time(
         train_data_iterator=train_data_iterator,
         preprocess_common_state_dict_fn=preprocess_common_state_dict,
     )
-
+    
     # Stop timer and compute time elapsed to save checkpoint. Stop timer before timers.log() call as it resets the timer.
     timers(timer_key).stop(barrier=True)
     save_checkpoint_duration = timers(timer_key).elapsed(reset=False)
-
+    
     if should_report_memory:
         # Track memory after checkpoint save.
         report_memory(f"(after save_checkpoint for iteration {iteration})")
@@ -3757,11 +3763,11 @@ def train(
         _run_gpu_sniff_test('before training')
 
     report_memory_flag = True
-    perf_callback = initialize_perf_monitor(args)  # FlagScale Modify
     pre_hook_enabled = False
     should_exit = False
     exit_code = 0
     is_first_iteration = True
+    perf_callback = initialize_perf_monitor(args)  # FlagScale Modify
 
     if args.manual_gc:
         # Disable the default garbage collector and perform the collection manually.
@@ -3930,7 +3936,7 @@ def train(
     # Run training iterations till done.
     buffered_rollouts = None
     while iteration < args.train_iters:
-        if (args.profile
+        if (args.profile 
             and (len(args.profile_ranks) == 0 or
                  torch.distributed.get_rank() in args.profile_ranks)):
             # Enable NVTX range when profiling starts and nvtx_ranges is set.
@@ -3943,9 +3949,9 @@ def train(
                 nsys_nvtx_context = torch.autograd.profiler.emit_nvtx(record_shapes=args.record_shapes)
                 nsys_nvtx_context.__enter__()
 
-        ft_integration.on_checkpointing_start()
+        ft_integration.on_checkpointing_start(is_async_finalization=True, blocking=False)
         maybe_finalize_async_save(blocking=False)
-        ft_integration.on_checkpointing_end(is_async_finalization=True)
+        ft_integration.on_checkpointing_end(is_async_finalization=True, blocking=False)
         # Update the timeout for all process groups after initialization
         # We update the timeout after the first successful iteration,
         # which takes longer than others usually
@@ -4434,11 +4440,11 @@ def train(
     if pre_hook_enabled:
         disable_forward_pre_hook(model)
 
-    ft_integration.on_checkpointing_start()
+    ft_integration.on_checkpointing_start(is_async_finalization=True, blocking=True)
     # This will finalize all unfinalized async request and terminate
     # a persistent async worker if persistent ckpt worker is enabled
     maybe_finalize_async_save(blocking=True, terminate=True)
-    ft_integration.on_checkpointing_end(is_async_finalization=True)
+    ft_integration.on_checkpointing_end(is_async_finalization=True, blocking=True)
 
     if args.log_energy:
         energy_monitor.lap()
@@ -4950,7 +4956,9 @@ def build_train_valid_test_data_iterators(build_train_valid_test_datasets_provid
                     args.eval_iters = [None] * len(valid_dataloaders)
                 else:
                     local_eval_iters = [len(dl) for dl in valid_dataloaders]
-                    eval_iters_tensor = torch.tensor(local_eval_iters, dtype=torch.long, device='cuda')
+                    eval_iters_tensor = torch.tensor(
+                        local_eval_iters, dtype=torch.long, device=cur_platform.device()
+                    )
                     torch.distributed.all_reduce(
                         eval_iters_tensor,
                         op=torch.distributed.ReduceOp.MAX,
@@ -4959,7 +4967,9 @@ def build_train_valid_test_data_iterators(build_train_valid_test_datasets_provid
                     args.eval_iters = eval_iters_tensor.tolist()
             else:
                 local_eval_iters = len(valid_dataloaders[0])
-                eval_iters_tensor = torch.tensor([local_eval_iters], dtype=torch.long, device='cuda')
+                eval_iters_tensor = torch.tensor(
+                    [local_eval_iters], dtype=torch.long, device=cur_platform.device()
+                )
                 torch.distributed.all_reduce(
                     eval_iters_tensor,
                     op=torch.distributed.ReduceOp.MAX,
