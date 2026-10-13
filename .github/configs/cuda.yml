@@ -113,6 +113,10 @@ container_options: >-
   --cap-add NET_ADMIN
   --security-opt seccomp=unconfined
 
+# Budget for each prepared dependency recovery step (download plus validation).
+timeouts:
+  runtime_recovery_minutes: 30
+
 # =============================================================================
 # Package Manager Configuration
 # =============================================================================

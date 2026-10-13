@@ -17,6 +17,11 @@ name: Common Functional Tests - Training
 on:
   workflow_call:
     inputs:
+      runtime_recovery_timeout_minutes:
+        required: false
+        type: number
+        default: 15
+        description: Budget for each prepared dependency download and validation step
       platform:
         required: true
         type: string
@@ -219,7 +224,7 @@ jobs:
 
       - name: Recover and validate CUDA megatron runtime
         if: inputs.platform == 'cuda' && inputs.megatron_lm_fl_enabled == 'true'
-        timeout-minutes: 15
+        timeout-minutes: ${{ inputs.runtime_recovery_timeout_minutes }}
         uses: ./FlagScale/.github/actions/restore-prepared-runtime
         with:
           kind: megatron
@@ -228,7 +233,7 @@ jobs:
 
       - name: Recover and validate CUDA te runtime
         if: inputs.platform == 'cuda' && inputs.te_fl_enabled == 'true'
-        timeout-minutes: 15
+        timeout-minutes: ${{ inputs.runtime_recovery_timeout_minutes }}
         uses: ./FlagScale/.github/actions/restore-prepared-runtime
         with:
           kind: te

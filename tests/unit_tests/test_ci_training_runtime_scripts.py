@@ -790,3 +790,42 @@ def test_unit_timeout_is_forwarded_through_common_workflow():
     assert run["timeout-minutes"] == "${{ inputs.unit_timeout_minutes }}"
     enflame = yaml.safe_load((ROOT / ".github/configs/enflame.yml").read_text())
     assert enflame["test_matrix"]["unit"]["timeout_minutes"] == 30
+
+
+def test_runtime_recovery_budget_is_forwarded_without_changing_test_budgets():
+    common = yaml.safe_load((ROOT / ".github/workflows/all_tests_common.yml").read_text())
+    key = "runtime_recovery_timeout_minutes"
+    assert (
+        common["jobs"]["checkout_and_config"]["outputs"][key]
+        == "${{ steps.config.outputs.runtime_recovery_timeout_minutes }}"
+    )
+    consumers = {
+        "unit_tests": "unit_tests_common",
+        "functional_tests_train": "functional_tests_train",
+        "functional_tests_hetero_train": "functional_tests_hetero_train",
+        "functional_tests_benchmark": "functional_tests_benchmark",
+    }
+    for job, workflow in consumers.items():
+        assert (
+            common["jobs"][job]["with"][key]
+            == "${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}"
+        )
+        data = yaml.safe_load((ROOT / f".github/workflows/{workflow}.yml").read_text())
+        trigger = data.get("on", data.get(True))
+        setting = trigger["workflow_call"]["inputs"][key]
+        assert setting["type"] == "number" and setting["default"] == 15
+        recovery = [
+            step
+            for definition in data["jobs"].values()
+            for step in definition.get("steps", [])
+            if step["name"].startswith("Recover and validate CUDA")
+        ]
+        assert len(recovery) == 2
+        for step in recovery:
+            assert step["timeout-minutes"] == "${{ inputs.runtime_recovery_timeout_minutes }}"
+            assert "inputs.platform == 'cuda'" in step["if"]
+    cuda = yaml.safe_load((ROOT / ".github/configs/cuda.yml").read_text())
+    assert cuda["timeouts"]["runtime_recovery_minutes"] == 30
+    for platform in ("ascend", "enflame", "ppu", "metax", "musa", "hygon", "kunlunxin"):
+        config = yaml.safe_load((ROOT / f".github/configs/{platform}.yml").read_text())
+        assert config.get("timeouts", {}).get("runtime_recovery_minutes", 15) == 15
