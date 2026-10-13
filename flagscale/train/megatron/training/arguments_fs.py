@@ -29,6 +29,7 @@ except:
     )
 from megatron.plugin.hetero.parallel_context import RankMapper
 from megatron.plugin.platform import get_platform
+from megatron.training.distributed_backends import resolve_distributed_backend
 
 cur_platform = get_platform()
 
@@ -74,13 +75,11 @@ class FSTrainArguments:
 
             # Call the init process
             init_process_group_kwargs = {
-                "backend": args.distributed_backend,
+                "backend": resolve_distributed_backend(args.distributed_backend),
                 "world_size": args.world_size,
                 "rank": args.rank,
                 "timeout": timedelta(minutes=args.distributed_timeout_minutes),
             }
-            if args.distributed_backend == "flagcx":
-                init_process_group_kwargs["backend"] = "cpu:gloo,cuda:flagcx,txda:flagcx"
             # for communication based cpu
             if args.enable_hetero and args.hetero_use_cpu_communication:
                 # if not all(device_type == args.hetero_device_types[0] for device_type in args.hetero_device_types):
@@ -96,7 +95,16 @@ class FSTrainArguments:
 
     def pre_validate_args(self):
         """Pre-validate the arguments before Megatron function `validate_args`."""
-        if self._rank_mapper is None:
+        # NOTE(metax): RankMapper's build_rank_mapping() performs a world-size
+        # all_gather_object very early (before model parallel groups exist).
+        # On backends where world-spanning collectives are unreliable (e.g.
+        # MetaX MCCL), this hangs even for non-hetero runs that never consume
+        # the mapper (no external readers of `.rank_mapper`). Skip building it
+        # unless hetero is actually requested.
+        hetero_requested = getattr(self.args, "hetero_process_meshes", None) is not None or getattr(
+            self.args, "enable_hetero", False
+        )
+        if self._rank_mapper is None and hetero_requested:
             self._build_rank_mapper()
 
         if self.args.hetero_process_meshes is not None:
