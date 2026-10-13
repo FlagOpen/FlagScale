@@ -281,10 +281,74 @@ jobs:
       env_name: ${{ needs.checkout_and_config.outputs.env_name_train }}
       env_path: ${{ needs.checkout_and_config.outputs.env_path_train }}
 
+  # Warm runtime cache: serialize first artifact download to reduce network pressure
+  # when cache is unavailable (e.g., fork PRs cannot write to base repo cache)
+  warm_runtime_cache:
+    name: warm-cache-${{ inputs.platform }}
+    needs: checkout_and_config
+    if: needs.checkout_and_config.outputs.megatron_lm_fl_enabled == 'true' || needs.checkout_and_config.outputs.te_fl_enabled == 'true'
+    runs-on: ${{ fromJson(needs.checkout_and_config.outputs.runs_on) }}
+    continue-on-error: true
+    container:
+      image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
+      volumes: ${{ fromJson(needs.checkout_and_config.outputs.container_volumes) }}
+      options: ${{ needs.checkout_and_config.outputs.container_options }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Warm Megatron cache
+        if: needs.checkout_and_config.outputs.megatron_lm_fl_enabled == 'true' && inputs.megatron_cache_key != ''
+        id: megatron_cache_warm
+        uses: actions/cache/restore@v4
+        with:
+          path: megatron-lm-fl-install
+          key: ${{ inputs.megatron_cache_key }}
+          fail-on-cache-miss: false
+
+      - name: Warm TE-FL cache
+        if: needs.checkout_and_config.outputs.te_fl_enabled == 'true' && inputs.te_fl_cache_key != ''
+        id: te_fl_cache_warm
+        uses: actions/cache/restore@v4
+        with:
+          path: te-fl-wheel
+          key: ${{ inputs.te_fl_cache_key }}
+          fail-on-cache-miss: false
+
+      - name: Fallback to Megatron artifact if cache missed
+        if: needs.checkout_and_config.outputs.megatron_lm_fl_enabled == 'true' && steps.megatron_cache_warm.outputs.cache-hit != 'true' && inputs.megatron_artifact_available == 'true'
+        timeout-minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
+        uses: ./.github/actions/restore-prepared-runtime
+        with:
+          kind: megatron
+          artifact-name: prepared-megatron-${{ inputs.platform }}-${{ github.run_id }}
+          artifact-available: ${{ inputs.megatron_artifact_available }}
+
+      - name: Fallback to TE-FL artifact if cache missed
+        if: needs.checkout_and_config.outputs.te_fl_enabled == 'true' && steps.te_fl_cache_warm.outputs.cache-hit != 'true' && inputs.te_fl_artifact_available == 'true'
+        timeout-minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
+        uses: ./.github/actions/restore-prepared-runtime
+        with:
+          kind: te
+          artifact-name: prepared-te-fl-${{ inputs.platform }}-${{ github.run_id }}
+          artifact-available: ${{ inputs.te_fl_artifact_available }}
+
+      - name: Report cache warming result
+        if: always()
+        run: |
+          echo "Cache warming completed:"
+          echo "  Megatron cache hit: ${{ steps.megatron_cache_warm.outputs.cache-hit }}"
+          echo "  TE-FL cache hit: ${{ steps.te_fl_cache_warm.outputs.cache-hit }}"
+          echo "Subsequent test jobs will benefit from warmed cache or validated artifacts."
+
   unit_tests:
     needs:
       - checkout_and_config
       - cli_validation
+      - warm_runtime_cache
     if: fromJson(needs.checkout_and_config.outputs.device_types)[0] != null
     strategy:
       fail-fast: false
@@ -320,6 +384,7 @@ jobs:
       - checkout_and_config
       - cli_validation
       - unit_tests
+      - warm_runtime_cache
     if: fromJson(needs.checkout_and_config.outputs.train_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_train.yml
     with:
@@ -349,6 +414,7 @@ jobs:
       - checkout_and_config
       - cli_validation
       - unit_tests
+      - warm_runtime_cache
     if: fromJson(needs.checkout_and_config.outputs.hetero_train_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_hetero_train.yml
     with:
@@ -436,6 +502,7 @@ jobs:
       - checkout_and_config
       - cli_validation
       - unit_tests
+      - warm_runtime_cache
     if: fromJson(needs.checkout_and_config.outputs.benchmark_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_benchmark.yml
     with:
