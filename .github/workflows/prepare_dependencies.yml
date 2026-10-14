@@ -199,6 +199,9 @@ jobs:
     name: deps-${{ inputs.platform }}
     needs: resolve
     if: needs.resolve.outputs.megatron_enabled == 'true' || needs.resolve.outputs.te_fl_enabled == 'true'
+    concurrency:
+      group: prepare-deps-${{ inputs.platform }}-${{ needs.resolve.outputs.runtime_contract_key }}
+      cancel-in-progress: false
     defaults:
       run:
         shell: bash
