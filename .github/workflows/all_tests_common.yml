@@ -111,6 +111,8 @@ jobs:
       runs_on: ${{ steps.config.outputs.runs_on }}
       container_volumes: ${{ steps.config.outputs.container_volumes }}
       container_options: ${{ steps.config.outputs.container_options }}
+      unit_timeout_minutes: ${{ steps.config.outputs.unit_timeout_minutes }}
+      runtime_recovery_timeout_minutes: ${{ steps.config.outputs.runtime_recovery_timeout_minutes }}
       device_types: ${{ steps.config.outputs.device_types }}
       megatron_lm_fl_enabled: ${{ steps.config.outputs.megatron_lm_fl_enabled }}
       te_fl_enabled: ${{ steps.config.outputs.te_fl_enabled }}
@@ -291,6 +293,8 @@ jobs:
     uses: ./.github/workflows/unit_tests_common.yml
     name: unit_tests
     with:
+      runtime_recovery_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
+      unit_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.unit_timeout_minutes) }}
       platform: ${{ inputs.platform }}
       device: ${{ matrix.device }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
@@ -319,6 +323,7 @@ jobs:
     if: fromJson(needs.checkout_and_config.outputs.train_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_train.yml
     with:
+      runtime_recovery_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
       platform: ${{ inputs.platform }}
       test_matrix: ${{ needs.checkout_and_config.outputs.train_test_matrix }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
@@ -347,6 +352,7 @@ jobs:
     if: fromJson(needs.checkout_and_config.outputs.hetero_train_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_hetero_train.yml
     with:
+      runtime_recovery_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
       platform: ${{ inputs.platform }}
       test_matrix: ${{ needs.checkout_and_config.outputs.hetero_train_test_matrix }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
@@ -433,6 +439,7 @@ jobs:
     if: fromJson(needs.checkout_and_config.outputs.benchmark_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_benchmark.yml
     with:
+      runtime_recovery_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
       platform: ${{ inputs.platform }}
       test_matrix: ${{ needs.checkout_and_config.outputs.benchmark_test_matrix }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
