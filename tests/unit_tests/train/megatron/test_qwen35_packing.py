@@ -219,18 +219,29 @@ def test_disabled_packing_preserves_existing_layouts():
 
 
 @pytest.mark.parametrize("packed", [False, True])
-def test_get_batch_uses_batch_metadata_for_unpacked_validation(encoder, monkeypatch, packed):
+@pytest.mark.parametrize("tp_rank", [0, 1])
+def test_get_batch_uses_batch_metadata_for_unpacked_validation(
+    encoder, monkeypatch, packed, tp_rank
+):
     samples = [sample("a", [1, 2]), sample("b", [3, 4])]
     value = encoder.pack_selected_samples(samples) if packed else samples[0]
     batch = encoder.encode_batch(encoder.batch([value]))
     monkeypatch.setattr(train_qwen35, "get_args", lambda: args())
     monkeypatch.setattr(train_qwen35, "get_tokenizer", lambda: encoder.tokenizer)
-    monkeypatch.setattr(train_qwen35, "get_tensor_model_parallel_rank", lambda: 0)
-    monkeypatch.setattr(
-        train_qwen35,
-        "broadcast_data",
-        lambda keys, data, dtype: {k: data[k].to(dtype) for k in keys},
-    )
+    monkeypatch.setattr(train_qwen35, "get_tensor_model_parallel_rank", lambda: tp_rank)
+    received = {**batch, "is_packed": torch.tensor([packed], dtype=torch.int64)}
+    broadcast_keys = []
+
+    def broadcast(keys, payload, dtype):
+        broadcast_keys.extend(keys)
+        if tp_rank == 0:
+            assert payload is not None
+            return {key: payload[key].to(dtype) for key in keys}
+        # A receiving rank must not index data or metadata before the broadcast.
+        assert payload is None
+        return {key: received[key].to(dtype).clone() for key in keys}
+
+    monkeypatch.setattr(train_qwen35, "broadcast_data", broadcast)
     monkeypatch.setattr(
         train_qwen35,
         "cur_platform",
@@ -245,8 +256,108 @@ def test_get_batch_uses_batch_metadata_for_unpacked_validation(encoder, monkeypa
         ), None
 
     output = train_qwen35.get_batch(
-        iter([batch]), model=SimpleNamespace(get_rope_index=get_positions)
+        iter([batch]) if tp_rank == 0 else None,
+        model=SimpleNamespace(get_rope_index=get_positions),
     )
     assert (output[-1] is not None) == packed
     assert (seen[0] is not None) == packed
     assert output[4].shape == (3, 1, batch["text"].shape[-1])
+    torch.testing.assert_close(output[0], batch["text"])
+    torch.testing.assert_close(output[1], batch["target"])
+    assert broadcast_keys.count("is_packed") == 1
+    assert broadcast_keys.count("cu_seqlens") == int(packed)
+
+
+@pytest.mark.parametrize("padding", [0, 3])
+@pytest.mark.parametrize("with_image", [False, True])
+def test_packed_mrope_delta_describes_one_physical_row(padding, with_image):
+    second = [90, 91, 13] if with_image else [21, 22, 23]
+    tokens = torch.tensor([[11, 12, *second, *([0] * padding)]])
+    positions, delta = get_rope_index(
+        2,
+        91,
+        92,
+        90,
+        input_ids=tokens,
+        image_grid_thw=torch.tensor([[1, 2, 2]]) if with_image else None,
+        attention_mask=tokens != 0,
+        cu_seqlens=torch.tensor([0, 2, 5 + padding], dtype=torch.int32),
+    )
+    # Two independent samples have positions [0, 1] and [0, 1, 2].
+    # The packed-row delta is 3 minus its physical length, not two sample deltas.
+    expected = torch.tensor([[[0, 1, 0, 1, 2]]]).expand(3, -1, -1)
+    torch.testing.assert_close(positions[..., :5], expected)
+    assert delta.shape == (1, 1)
+    assert delta.dtype == tokens.dtype
+    assert delta.tolist() == [[-2 - padding]]
+
+
+@pytest.mark.parametrize("capacity_padding", [False, True])
+def test_mtp_tail_padding_has_no_supervised_cross_sample_target(
+    encoder, monkeypatch, capacity_padding
+):
+    monkeypatch.setattr(data, "FIRST_MAX_PADDING_FLAG", capacity_padding)
+    packed = encoder.pack_selected_samples([sample("a", [11, 12, 13]), sample("b", [21, 22, 23])])
+    batch = encoder.encode_batch(encoder.batch([packed]))
+    cu = batch["cu_seqlens"]
+    params = PackedSeqParams(qkv_format="thd", cu_seqlens_q=cu, cu_seqlens_kv=cu)
+    assert params.cu_seqlens_q_padded is None
+    labels, _ = roll_tensor(batch["target"], packed_seq_params=params)
+    mask, _ = roll_tensor((batch["target"] != data.IGNORE_IDX).float(), packed_seq_params=params)
+    assert labels[mask.bool()].tolist() == [13, 23]
+    assert mask[0, :6].tolist() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    assert torch.all(mask[0, 6:] == 0)
+
+
+@pytest.mark.parametrize("capacity_padding", [False, True])
+def test_reference_attention_tail_padding_preserves_outputs_and_gradients(
+    encoder, monkeypatch, capacity_padding
+):
+    # Exercise the actual TE-FL fallback used by the device smoke. Native TE
+    # installations without this optional backend can still run the other tests.
+    backend = pytest.importorskip(
+        "transformer_engine.plugin.core.backends.reference.flash_attention",
+        reason="This compatibility test requires the TE-FL reference attention backend",
+    )
+    monkeypatch.setattr(data, "FIRST_MAX_PADDING_FLAG", capacity_padding)
+    packed = encoder.pack_selected_samples([sample("a", [11, 12, 13]), sample("b", [21, 22, 23])])
+    batch = encoder.encode_batch(encoder.batch([packed]))
+    cu = batch["cu_seqlens"]
+    total = batch["text"].numel()
+    rng = torch.Generator().manual_seed(1308)
+    # Float64 avoids FP32 roundoff differences between masked and causal SDPA
+    # kernels when checking near-zero gradients at the first token of a segment.
+    qkv = [
+        torch.randn(total, 2, 4, generator=rng, dtype=torch.float64, requires_grad=True)
+        for _ in range(3)
+    ]
+    separate_qkv = [tensor.detach()[:6].clone().requires_grad_() for tensor in qkv]
+    attention = backend.FlashAttentionTorch(softmax_scale=0.5)
+    output = attention(
+        *qkv,
+        qkv_layout="thd",
+        attn_mask_type="causal",
+        cu_seqlens_q=cu,
+        cu_seqlens_kv=cu,
+        cu_seqlens_q_padded=None,
+        cu_seqlens_kv_padded=None,
+        max_seqlen_q=total - 3,
+        max_seqlen_kv=total - 3,
+    )
+    expected_parts = []
+    for start, end in [(0, 3), (3, 6)]:
+        tensors = [tensor[start:end].transpose(0, 1).unsqueeze(0) for tensor in separate_qkv]
+        part = torch.nn.functional.scaled_dot_product_attention(
+            *tensors,
+            is_causal=True,
+            dropout_p=0.0,
+            scale=0.5,
+        )
+        expected_parts.append(part.squeeze(0).transpose(0, 1))
+    expected = torch.cat(expected_parts)
+    torch.testing.assert_close(output[:6], expected, rtol=1e-8, atol=1e-10)
+    output[:6].square().sum().backward()
+    expected.square().sum().backward()
+    for tensor, separate in zip(qkv, separate_qkv):
+        torch.testing.assert_close(tensor.grad[:6], separate.grad, rtol=1e-8, atol=1e-10)
+        assert torch.count_nonzero(tensor.grad[6:]) == 0
