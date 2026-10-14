@@ -418,3 +418,49 @@ PY
 ```
 
 稳定窗口内不保存 checkpoint（`save_interval: 1000`），第 15 步结束后仍会保存最终训练状态。比较结果见 [8 卡吞吐报告](throughput_report.md)。日志吞吐仍是框架语言模型计算量估算除以实际耗时，并非硬件计数器读数；固定长度消除了动态长度造成的口径不一致，但该指标不包含视觉编码器完整 FLOPs，也不等同于有效非 padding token 吞吐。
+
+## 13. 基础多模态 packing
+
+Qwen3.5 的 Energon 数据路径支持把多条完整样本拼接为一个训练序列。配置
+`train.system.packing_buffer_size` 为正整数即可开启，默认 `0` 关闭。例如：
+
+```bash
+export QWEN35_DATA_PATH=/path/to/energon/wds
+export QWEN35_VISION_ROOT=/path/to/images
+export QWEN35_HF_PATH=/path/to/tokenizer
+python run.py --config-path examples/qwen35/conf --config-name train_packing
+```
+
+`conf/train_packing.yaml` 继承完整 4B 模型配置（包括视觉编码器和 MTP），示例使用
+8 卡、TP4、PP1、CP1。模型权重、训练步数、输出目录按前文设置；默认配置不指定预训练权重。
+
+- `packing_buffer_size` 的单位是**已编码样本数**，表示每个 Energon worker 一次用于打包的
+  缓冲样本数量，不是 token 数、batch size 或全局 DP 缓冲大小。调大它会增加主机内存需求。
+- 数据先按 DP rank 和 worker 划分，再在各自的数据流中独立 packing，不跨 DP 收集或重分配。
+- 默认采用顺序 **Next Fit**：保持输入顺序；下一条样本放不下时结束当前包、另起一包；
+  缓冲区末尾的不足一包也会输出。没有长度排序、BFD、代价模型、solver 或负载均衡。
+- 每包上限为 `max_padding_length`，须与 `seq_length` 相等。超过上限或空样本会记录警告并跳过；
+  不切断视觉 token 区间。请按数据长度分布设置上限，检查日志中的跳过情况。
+- 当前支持 `micro_batch_size=1`、`context_parallel_size=1`、`pipeline_model_parallel_size=1`；
+  TP、DP 可以大于 1。一个 microbatch 包含一个打包后的序列，`global_batch_size` 统计包数，
+  原始样本数随长度变化，不能直接沿用未 packing 的样本数口径。
+
+拼接时保留图像/视频 patch、grid、视觉 mask 的对应顺序，通过 `cu_seqlens` 将原始样本边界
+传给语言模型的 attention、GDN 和 MTP；mRoPE 在各样本内部独立计算。已有标签已完成 next-token
+shift，因此只屏蔽每条样本末尾的标签，不再次 shift，也不屏蔽下一条样本的首个有效标签。
+
+保留原有首批容量 padding 和 TP 对齐 padding；尾部 padding 属于最后一段、loss 为零。
+`packing_buffer_size=0` 使用原来的非 packing 路径。验证集继续逐样本评估，并根据实际 batch
+元数据选择普通路径。不同 attention 后端可能内部补齐后计算，启用该功能不等于启用了原生
+varlen kernel，也不保证具体吞吐收益。
+
+在已安装训练依赖的环境中，从 FlagScale 根目录运行回归测试：
+
+```bash
+PYTHONPATH="$PWD:$PWD/flagscale/train:$PWD/flagscale/train/megatron:${PYTHONPATH:-}" \
+  python -m pytest -q tests/unit_tests/train/megatron/test_qwen35_packing.py
+```
+
+测试覆盖顺序打包、尾包/超长样本、图文与视频对齐、标签边界、padding、分段 mRoPE、MTP 位移、
+非法配置，以及启用训练 packing 时未打包验证 batch 的回退路径。仍需在目标设备上验证完整模型
+前后向和分布式训练；新增功能不要求改动 Megatron-LM-FL、TransformerEngine-FL 或 FlagGems。
