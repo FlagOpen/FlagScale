@@ -93,7 +93,10 @@ def get_rope_index(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Compute mRoPE position indices for Qwen3.5.
 
-    Copied from Qwen3 VL.
+    Copied from Qwen3 VL. For a packed row, delta has shape [1, 1] and describes
+    the whole physical row (including tail padding), not each original sample.
+    The training caller discards it. Packed generation/KV-cache continuation is
+    not supported by this training interface.
     """
 
     if cu_seqlens is None and packed_seq_params is not None:
