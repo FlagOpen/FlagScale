@@ -231,7 +231,8 @@ def get_ltor_masks_and_position_ids(
         pos = torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(batch_size, -1)
         position_ids = pos.unsqueeze(0).expand(3, -1, -1)
     else:
-        # Multimodal: compute mRoPE position indices from vision grids
+        # Training consumes explicit positions only. The returned packed-row delta
+        # is not a per-sample generation/cache offset and is intentionally unused.
         position_ids, _ = model.get_rope_index(
             input_ids=input_ids,
             image_grid_thw=image_thw_grids,
@@ -433,6 +434,10 @@ def forward_step(data_iterator, model: Qwen35Model):
     packed_seq_params = None
     if cu_seqlens is not None:
         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+        # These boundaries already cover the complete physical THD buffer, with
+        # tail padding included in the final segment. At CP=1 no separate padded
+        # offsets are needed: attention/GDN fall back to cu_seqlens_q/kv, and MTP
+        # rolls within the same segments. CP>1 remains rejected by validation.
         packed_seq_params = PackedSeqParams(
             qkv_format="thd",
             cu_seqlens_q=cu_seqlens,
