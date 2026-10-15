@@ -1,6 +1,6 @@
 # FlagScale 五项 CI 改进与验证步骤
 
-本次修改基于 `6c45fac` 的公共 CI 框架，在 `feat/ci-five-improvements` 上实现。
+本次修改基于 `6c45fac` 的公共 CI 框架。
 保留 `ci.yml → _platform_pipeline.yml → prepare_dependencies.yml / all_tests_common.yml`
 调用关系，平台镜像、runner、训练测试和依赖缓存继续由现有配置控制。
 
@@ -117,7 +117,7 @@ Python `fnmatchcase`，没有 glob 元字符时相当于匹配完整文件名。
 
 `issue_comment` 和 `workflow_run` 入口需要先进入默认分支才能完整验收。
 功能分支上的本地 mock 测试不等于 GitHub 上的真实评论事件已经可用。
-先在组内仓库审核、受控启用，再考虑向官方提交。
+合并前可以验证控制器逻辑；合并到默认分支后，再由维护者受控验收真实事件链路。
 
 ## 6. 本地验证
 
@@ -169,20 +169,22 @@ node --test tests/ci/slash_command.test.cjs
 5. 按 `all_tests_common.yml` 选择实际启用的训练、异构训练、benchmark 等功能测试；不要用单元测试代替全套功能测试。
 6. 保存提交 SHA、镜像标识、执行命令、退出码和日志。网络故障与真实测试失败分开记录。
 
-## 8. 组内 PR 与后续启用顺序
+## 8. PR 审核与后续启用顺序
 
-本次本地修改不自动 commit、push、创建 PR 或触发 Actions。
-审核本地 diff 后，可提交并推送到现有 `feat/ci-five-improvements`，再创建组内 PR：
+通过贡献者 fork 的功能分支向官方仓库提交 PR：
 
-- base：`BrianPei/FlagScale:main`
-- head：`BrianPei/FlagScale:feat/ci-five-improvements`
+- base：`flagos-ai/FlagScale:main`
+- head：贡献者 fork 中的功能分支
 
-组内 runner 和 secrets 不会因为 fork 关系自动继承官方设置。
-普通 PR CI 验证后，在组内默认分支启用控制器，再验证标签事件、评论命令、拒绝无权限用户、
-固定提交、防止过期请求、一次重试和总门禁。先观察真实 check 名称，再配置 required check。
+1. 在 PR 中列出五项功能、实际执行的检查及尚未完成的硬件测试；不将本地 mock 或离线安装视为完整 Actions 验收。
+2. 由维护者审核代码，并按目标仓库设置批准 fork PR 的工作流运行。创建 PR 本身可能自动触发检查。
+3. 检查普通 PR CI 的各平台结果；runner 和 secrets 不会因为 fork 关系自动继承。
+4. 控制器进入默认分支后，由维护者验证标签事件、评论命令、拒绝无权限用户、固定提交、
+   防止过期请求、一次重试和总门禁。
+5. 观察真实 check 名称，再由管理员将 `CI Complete` 配置为 required check。
 
-只有组内审核、服务器验证和事件链路验收完成后，再安排向 `flagos-ai/FlagScale:main` 提交 PR。
 批准运行 fork PR 工作流与审核合并是两个动作，是否需要维护者批准运行由目标仓库设置决定。
+提交 PR 或获得代码审核通过不代表硬件测试已经通过；以实际工作流结果为准。
 
 参考：
 
