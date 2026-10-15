@@ -1,0 +1,102 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Unified CI entry point for FlagScale.
+#
+# Pipeline:  lint → generate-matrix → platform-pipeline (matrix)
+#
+# Platform discovery is config-driven: generate_matrix.py scans
+# .github/configs/*.yml for platform names, then on pull_request events
+# intersects the changed-file list against per-platform paths_watch so
+# only affected platforms run.  All other events run the full matrix.
+
+name: CI
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 02:00 CST daily
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'examples/**'
+  pull_request:
+    branches: [main, devops]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'examples/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Reuse the repository's own .pre-commit-config.yaml, scoped to files changed
+  # against the base branch.  Pre-existing style debt elsewhere in the tree is
+  # not this gate's concern; on push/schedule the diff is empty and it passes.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pre-commit
+        run: pip install --quiet pre-commit==4.2.0
+      - name: pre-commit (changed files)
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          pre-commit run --show-diff-on-failure \
+            --from-ref "$(git merge-base "origin/$BASE_REF" HEAD)" --to-ref HEAD
+
+  generate-matrix:
+    name: Generate platform matrix
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      platforms: ${{ steps.matrix.outputs.platforms }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compute platform matrix
+        id: matrix
+        run: |
+          python .github/scripts/ci/generate_matrix.py \
+            --event-name "${{ github.event_name }}" \
+            --base-ref  "${{ github.base_ref || 'main' }}" \
+            --configs-dir .github/configs \
+            >> "$GITHUB_OUTPUT"
+
+  platform-pipeline:
+    name: Platform pipeline (${{ matrix.platform }})
+    needs: generate-matrix
+    if: needs.generate-matrix.outputs.platforms != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.generate-matrix.outputs.platforms) }}
+    uses: ./.github/workflows/_platform_pipeline.yml
+    with:
+      platform: ${{ matrix.platform }}
