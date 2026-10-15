@@ -103,6 +103,8 @@ jobs:
       matrix:
         platform: ${{ fromJson(needs.generate-matrix.outputs.platforms) }}
     uses: ./.github/workflows/_platform_pipeline.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
     with:
       platform: ${{ matrix.platform }}
 

@@ -81,6 +81,7 @@ jobs:
       fail-fast: false
       matrix:
         platform: ${{ fromJSON(needs.resolve.outputs.platforms) }}
+    # Do not pass report secrets to explicitly requested PR source code.
     uses: ./.github/workflows/_platform_pipeline.yml
     with:
       platform: ${{ matrix.platform }}

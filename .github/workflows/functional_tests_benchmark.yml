@@ -16,6 +16,10 @@ name: Common Functional Tests - Benchmark
 
 on:
   workflow_call:
+    secrets:
+      FLAGCICD_API_TOKEN:
+        required: false
+        description: Optional FlagCICD report upload token; unavailable in fork PRs
     inputs:
       source_repository:
         type: string
@@ -115,6 +119,7 @@ jobs:
         shell: bash
     env:
       PROJECT_ROOT: ${{ github.workspace }}/FlagScale
+      FLAGCICD_TOKEN_SET: ${{ secrets.FLAGCICD_API_TOKEN != '' }}
     runs-on: ${{ fromJson(inputs.runs_on) }}
     strategy:
       fail-fast: false
@@ -125,7 +130,9 @@ jobs:
       ports:
         - 80
       volumes: ${{ fromJson(inputs.container_volumes) }}
-      options: ${{ inputs.container_options }}
+      options: >-
+        ${{ inputs.container_options }}
+        ${{ vars.FLAGCICD_HOST_IP && format('--add-host flagcicd-inner.flagos.net:{0}', vars.FLAGCICD_HOST_IP) || '' }}
 
     steps:
       - name: Checkout code (attempt 1)
@@ -427,17 +434,26 @@ jobs:
             "$LOG_FILE" "$GOLD_FILE" "$OUTPUT_FILE"
 
       - name: Install jq
-        if: always() && steps.benchmark_test.outcome == 'success'
+        if: ${{ !cancelled() && env.FLAGCICD_TOKEN_SET == 'true' && steps.benchmark_test.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
         run: apt-get update && apt-get install -y jq
 
+      - name: Explain skipped FlagCICD benchmark upload
+        if: ${{ !cancelled() && env.FLAGCICD_TOKEN_SET != 'true' }}
+        run: |
+          echo 'FlagCICD benchmark-${{ inputs.platform }}-${{ matrix.test_config.model }}-${{ matrix.test_config.case }}: Skipped: FLAGCICD_API_TOKEN unavailable' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload benchmark data to backend
-        if: always() && steps.benchmark_test.outcome == 'success'
-        uses: flagos-ai/FlagOps/actions/post-benchmark-report@main
+        if: ${{ !cancelled() && env.FLAGCICD_TOKEN_SET == 'true' && steps.benchmark_test.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: flagos-ai/FlagOps/actions/post-benchmark-report@466de7d164bf6ca3989c0abaeba1c3a62c68a047
         env:
           NO_PROXY: "flagcicd-inner.flagos.net"
         with:
           backend_url: 'http://flagcicd-inner.flagos.net:8000'
-          user_id: '000000000000000000'
+          api_token: ${{ secrets.FLAGCICD_API_TOKEN }}
           report_path: ${{ env.PROJECT_ROOT }}/tests/functional_tests/${{ matrix.test_config.task }}/${{ matrix.test_config.model }}/test_results/${{ matrix.test_config.case }}/logs/benchmark_metrics.json
           list_code: 'benchmark_${{ matrix.test_config.task }}_${{ matrix.test_config.model }}_${{ matrix.test_config.case }}'
           list_name: 'Benchmark-${{ matrix.test_config.model }}-${{ matrix.test_config.case }}'

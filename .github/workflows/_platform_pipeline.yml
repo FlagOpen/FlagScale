@@ -20,6 +20,10 @@ name: Platform Pipeline
 
 on:
   workflow_call:
+    secrets:
+      FLAGCICD_API_TOKEN:
+        required: false
+        description: Optional FlagCICD report upload token; unavailable in fork PRs
     inputs:
       source_repository:
         type: string
@@ -49,6 +53,8 @@ jobs:
     name: test / ${{ inputs.platform }}
     needs: prepare
     uses: ./.github/workflows/all_tests_common.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
     with:
       source_repository: ${{ inputs.source_repository }}
       source_sha: ${{ inputs.source_sha }}
