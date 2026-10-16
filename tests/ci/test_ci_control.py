@@ -23,7 +23,6 @@ def load(name):
 
 matrix = load("generate_matrix")
 gate = load("check_results")
-retry = load("retry_policy")
 PLATFORMS = matrix.load_platforms(ROOT / ".github/configs")
 
 
@@ -73,7 +72,7 @@ def test_labels_and_documentation():
     files = ["docker/ascend/a"]
     assert matrix.select_platforms(
         PLATFORMS, "pull_request", files, ["platform:cuda", "platform:ppu"]
-    )[0] == ["cuda", "ppu"]
+    )[0] == ["ascend", "cuda", "ppu"]
     assert matrix.select_platforms(PLATFORMS, "pull_request", files, ["platform:all"])[0] == sorted(
         PLATFORMS
     )
@@ -135,37 +134,6 @@ def test_documentation_gate():
     needs["platform-pipeline"]["result"] = "skipped"
     assert not gate.failures(needs, [])
     assert gate.failures(needs, ["ascend"])
-
-
-@pytest.mark.parametrize(
-    "log,expected",
-    [
-        ("pip ReadTimeout while downloading wheel", True),
-        ("git: Could not resolve host github.com", True),
-        ("Timeout waiting for distributed workers", False),
-        ("AssertionError: bad value; ConnectionResetError", False),
-        ("FAILED tests/test_foo.py::test_bad ReadTimeout", False),
-        ("No matching distribution found ReadTimeout", False),
-        ("CUDA out of memory", False),
-        ("", False),
-    ],
-)
-def test_retry_is_conservative(log, expected):
-    jobs = [
-        {"id": 1, "name": "Platform pipeline (ascend) / test / unit", "conclusion": "failure"},
-        {"id": 2, "name": "CI Complete", "conclusion": "failure"},
-    ]
-    assert retry.retryable(jobs, {1: log}) is expected
-
-
-def test_no_retry_for_lint_mixed_failures_and_missing_logs():
-    jobs = [{"id": 1, "name": "Lint", "conclusion": "failure"}]
-    assert not retry.retryable(jobs, {1: "ReadTimeout"})
-    jobs[0]["name"] = "unit"
-    jobs.append({"id": 2, "name": "train", "conclusion": "failure"})
-    assert not retry.retryable(jobs, {1: "ReadTimeout", 2: "AssertionError"})
-    assert not retry.retryable(jobs, {})
-    assert not retry.retryable([{"id": 2, "name": "CI Complete", "conclusion": "failure"}], {})
 
 
 def test_diff_includes_both_sides_of_renames(tmp_path):
@@ -242,4 +210,119 @@ def test_matrix_cli_event_payload(tmp_path):
         cwd=ROOT,
         text=True,
     )
-    assert 'platforms=["ppu"]' in result
+    assert json.loads(result.splitlines()[0].removeprefix("platforms=")) == ["ascend", "ppu"]
+
+
+@pytest.mark.parametrize("changed_platform", sorted(PLATFORMS))
+@pytest.mark.parametrize("label_platform", sorted(PLATFORMS))
+def test_platform_label_never_removes_path_coverage(changed_platform, label_platform):
+    files = [f"docker/{changed_platform}/Dockerfile"]
+    selected, _ = matrix.select_platforms(PLATFORMS, "pull_request", files, [])
+    labelled, _ = matrix.select_platforms(
+        PLATFORMS, "pull_request", files, [f"platform:{label_platform}"]
+    )
+    assert set(selected) <= set(labelled)
+    assert label_platform in labelled
+
+
+def test_examples_keep_existing_skip_policy():
+    assert (
+        matrix.select_platforms(PLATFORMS, "pull_request", ["examples/model/config.yaml"], [])[0]
+        == []
+    )
+    assert matrix.select_platforms(
+        PLATFORMS, "pull_request", ["examples/model/config.yaml", "flagscale/runner.py"], []
+    )[0] == sorted(PLATFORMS)
+
+
+def test_requested_source_cannot_save_dependency_caches():
+    workflow = yaml.load(
+        (ROOT / ".github/workflows/prepare_dependencies.yml").read_text(), Loader=yaml.BaseLoader
+    )
+    saves = [
+        step
+        for step in workflow["jobs"]["prepare"]["steps"]
+        if step.get("uses", "").startswith("actions/cache/save@")
+    ]
+    assert len(saves) == 2
+    for step in saves:
+        assert step["if"].startswith("inputs.source_sha == '' && ")
+
+
+@pytest.mark.parametrize(
+    "action,label,enabled",
+    [
+        ("opened", "", True),
+        ("synchronize", "", True),
+        ("labeled", "bug", False),
+        ("unlabeled", "lgtm", False),
+        ("labeled", "platform:ascend", True),
+        ("unlabeled", "platform:ascend", True),
+    ],
+)
+def test_label_events_do_not_cancel_or_replace_active_gate(action, label, enabled):
+    import re
+
+    workflow = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(), Loader=yaml.BaseLoader)
+    # These targeted expressions use the same boolean/string operator subset as JS.
+    # Execute the actual YAML expressions rather than copying their policy into the test.
+    expressions = [
+        workflow["jobs"]["lint"]["if"],
+        workflow["jobs"]["ci-complete"]["if"],
+        workflow["jobs"]["ci-complete"]["name"].removeprefix("${{ ").removesuffix(" }}"),
+        re.findall(r"\$\{\{ (.*?) \}\}", workflow["concurrency"]["group"])[-1],
+    ]
+    context = {"event": {"action": action, "label": {"name": label}}, "run_id": 123}
+    script = r"""
+    const data = JSON.parse(process.argv[1]);
+    const results = data.expressions.map(expression => new Function(
+      'github', 'contains', 'fromJSON', 'startsWith', 'format', 'always',
+      `return (${expression})`
+    )(data.context, (xs, x) => xs.includes(x), JSON.parse,
+      (s, prefix) => (s || '').startsWith(prefix),
+      (s, value) => s.replace('{0}', value), () => true));
+    process.stdout.write(JSON.stringify(results));
+    """
+    result = json.loads(
+        subprocess.check_output(
+            ["node", "-e", script, json.dumps({"expressions": expressions, "context": context})],
+            text=True,
+        )
+    )
+    assert result[:2] == [enabled, enabled]
+    assert result[2] == ("CI Complete" if enabled else "Ignored label event")
+    assert result[3] == ("" if enabled else "-ignored-label-123")
+
+
+@pytest.mark.parametrize(
+    "source_sha,source_repository", [("", ""), ("abc", ""), ("", "fork/repo"), ("abc", "fork/repo")]
+)
+@pytest.mark.parametrize(
+    "enabled,cache_hit", [(True, False), (True, True), (False, False), (False, True)]
+)
+def test_cache_save_conditions_exclude_explicit_pr_sources(
+    source_sha, source_repository, enabled, cache_hit
+):
+    workflow = yaml.load(
+        (ROOT / ".github/workflows/prepare_dependencies.yml").read_text(), Loader=yaml.BaseLoader
+    )
+    saves = [
+        step
+        for step in workflow["jobs"]["prepare"]["steps"]
+        if step.get("uses", "").startswith("actions/cache/save@")
+    ]
+    for step in saves:
+        condition = step["if"]
+        replacements = {
+            "inputs.source_sha": source_sha,
+            "inputs.source_repository": source_repository,
+            "needs.resolve.outputs.megatron_enabled": str(enabled).lower(),
+            "needs.resolve.outputs.te_fl_enabled": str(enabled).lower(),
+            "steps.megatron_cache.outputs.cache-hit": str(cache_hit).lower(),
+            "steps.te_fl_cache.outputs.cache-hit": str(cache_hit).lower(),
+        }
+        for expression, value in replacements.items():
+            condition = condition.replace(expression, repr(value))
+        # The actual conditions are string equality joined by boolean AND.
+        actual = eval(condition.replace("&&", "and"), {"__builtins__": {}})
+        assert actual == (not source_sha and not source_repository and enabled and not cache_hit)

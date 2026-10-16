@@ -52,7 +52,7 @@ def matches(path: str, pattern: str) -> bool:
 
 
 def documentation(path: str) -> bool:
-    return path.startswith("docs/") or path.endswith(".md")
+    return path.startswith(("docs/", "examples/")) or path.endswith(".md")
 
 
 def select_platforms(
@@ -88,14 +88,12 @@ def select_platforms(
         return all_platforms, "shared or unknown files: full matrix"
     if "all" in requested:
         return all_platforms, "platform:all"
-    if requested:
-        return sorted(requested), "platform labels"
     selected = [
         name
         for name, watch in platforms.items()
         if any(matches(path, pattern) for path in files for pattern in watch)
     ]
-    return sorted(selected), "platform-owned paths"
+    return sorted(set(selected) | requested), "platform-owned paths plus labels"
 
 
 def changed_files(base_ref: str, head_ref: str) -> list[str] | None:

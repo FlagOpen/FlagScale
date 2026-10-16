@@ -517,7 +517,8 @@ jobs:
           echo "TE-FL wheel ready: ${wheels[0]}"
 
       - name: Save Megatron-LM-FL cache
-        if: needs.resolve.outputs.megatron_enabled == 'true' && steps.megatron_cache.outputs.cache-hit != 'true'
+        # Explicit PR source executes under the dispatch ref: never publish it to that ref's cache.
+        if: inputs.source_sha == '' && inputs.source_repository == '' && needs.resolve.outputs.megatron_enabled == 'true' && steps.megatron_cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
@@ -546,7 +547,8 @@ jobs:
           fi
 
       - name: Save TE-FL wheel cache
-        if: needs.resolve.outputs.te_fl_enabled == 'true' && steps.te_fl_cache.outputs.cache-hit != 'true'
+        # Explicit PR source executes under the dispatch ref: never publish it to that ref's cache.
+        if: inputs.source_sha == '' && inputs.source_repository == '' && needs.resolve.outputs.te_fl_enabled == 'true' && steps.te_fl_cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v4
         with:

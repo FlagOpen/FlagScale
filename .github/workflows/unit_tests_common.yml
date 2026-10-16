@@ -141,9 +141,7 @@ jobs:
       ports:
         - 80
       volumes: ${{ fromJson(inputs.container_volumes) }}
-      options: >-
-        ${{ inputs.container_options }}
-        ${{ vars.FLAGCICD_HOST_IP && format('--add-host flagcicd-inner.flagos.net:{0}', vars.FLAGCICD_HOST_IP) || '' }}
+      options: ${{ inputs.container_options }}
     steps:
       - name: Checkout code (attempt 1)
         id: checkout_attempt_1
@@ -398,19 +396,18 @@ jobs:
           retention-days: 7
 
       - name: Upload coverage report to FlagCICD
-        if: ${{ !cancelled() && env.FLAGCICD_TOKEN_SET == 'true' && steps.coverage_report.outputs.available == 'true' }}
+        if: ${{ !cancelled() && env.FLAGCICD_TOKEN_SET == 'true' && steps.unit_test.outcome == 'success' && steps.coverage_report.outputs.available == 'true' }}
         continue-on-error: true
         timeout-minutes: 3
         # v2 resolved on 2026-10-15; pin the token-based API rather than a moving tag.
         uses: flagos-ai/FlagOps/actions/post-pytest-report@466de7d164bf6ca3989c0abaeba1c3a62c68a047
         env:
-          NO_PROXY: "flagcicd-inner.flagos.net"
+          NO_PROXY: "flagcicd.flagos.net"
         with:
           api_token: ${{ secrets.FLAGCICD_API_TOKEN }}
-          backend_url: 'http://flagcicd-inner.flagos.net:8000/metrics/'
+          backend_url: 'https://flagcicd.flagos.net/flagcicd/api/v1/cicd/metrics/'
           report_path: '${{ env.COVERAGE_REPORT_DIR }}/coverage.json'
           file_type: coverage
           job_name: coverage-${{ inputs.platform }}-${{ inputs.device }}-unittest
-          pr_id: ${{ github.event.pull_request.number || '' }}
           fail_on_error: 'false'
           runner_set_name: ${{ fromJson(inputs.runs_on)[0] }}

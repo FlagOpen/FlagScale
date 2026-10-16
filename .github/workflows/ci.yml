@@ -29,11 +29,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Unrelated labels must not cancel an active platform run.
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && !startsWith(github.event.label.name, 'platform:') && format('-ignored-label-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
   lint:
+    if: (!contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || startsWith(github.event.label.name, 'platform:'))
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -109,9 +112,10 @@ jobs:
       platform: ${{ matrix.platform }}
 
   ci-complete:
-    name: CI Complete
+    # Do not publish a skipped required-gate name for an ignored label event.
+    name: ${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && !startsWith(github.event.label.name, 'platform:') && 'Ignored label event' || 'CI Complete' }}
     needs: [lint, generate-matrix, platform-pipeline]
-    if: always()
+    if: always() && (!contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || startsWith(github.event.label.name, 'platform:'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
