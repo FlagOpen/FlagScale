@@ -25,7 +25,7 @@ ci_train_image: harbor.baai.ac.cn/flagos-dev/flagscale:manual-20260812-ascend-de
 ci_inference_image: harbor.baai.ac.cn/flagos-dev/flagscale:manual-20260812-ascend-dev-inference
 
 # Runner labels for this hardware
-runner_labels: ["flagscale-ascend-ascend910-gpu2-32c-128g"]
+runner_labels: ["flagcicd-910c"]
 
 # Container volumes (hardware-specific paths)
 container_volumes:

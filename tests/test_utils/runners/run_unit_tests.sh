@@ -130,6 +130,10 @@ omit = */_remote_module_non_scriptable
 [report]
 ignore_errors = true
 EOF
+        elif [ "$PLATFORM" = "ppu" ]; then
+            cat >> "$COVERAGERC" <<EOF
+omit = */_remote_module_non_scriptable
+EOF
         fi
     fi
 
@@ -165,12 +169,12 @@ EOF
     fi
     read -r -a TEST_TARGET_ARGS <<< "$TEST_TARGETS"
 
-    PYTEST_CMD=(torchrun "--nproc_per_node=$NPROC" "${RUNNER_CMD[@]}" "${TEST_TARGET_ARGS[@]}" -v --tb=short)
+    PYTEST_CMD=(torchrun "--nproc_per_node=$NPROC" "${RUNNER_CMD[@]}" "${TEST_TARGET_ARGS[@]}" -v --tb=short --durations=20 --durations-min=1)
     wait_for_gpu || return 1
     # Apply exclude patterns if any
     if [ -n "$EXCLUDE" ]; then
         read -r -a EXCLUDE_ARGS <<< "$EXCLUDE"
-        PYTEST_CMD=(torchrun "--nproc_per_node=$NPROC" "${RUNNER_CMD[@]}" "${EXCLUDE_ARGS[@]}" "${TEST_TARGET_ARGS[@]}" -v --tb=short)
+        PYTEST_CMD=(torchrun "--nproc_per_node=$NPROC" "${RUNNER_CMD[@]}" "${EXCLUDE_ARGS[@]}" "${TEST_TARGET_ARGS[@]}" -v --tb=short --durations=20 --durations-min=1)
     fi
 
     printf -v printable_cmd '%q ' "${PYTEST_CMD[@]}"

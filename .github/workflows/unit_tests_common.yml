@@ -17,6 +17,11 @@ name: Common Unit Tests
 on:
   workflow_call:
     inputs:
+      runtime_recovery_timeout_minutes:
+        required: false
+        type: number
+        default: 15
+        description: Budget for each prepared dependency download and validation step
       platform:
         required: true
         type: string
@@ -25,6 +30,11 @@ on:
         required: true
         type: string
         description: Device type (e.g., a100, a800, h100, generic)
+      unit_timeout_minutes:
+        required: false
+        type: number
+        default: 20
+        description: Unit test step budget including worker shutdown and coverage aggregation
       image:
         required: true
         type: string
@@ -209,18 +219,36 @@ jobs:
           fail-on-cache-miss: false
 
       - name: Restore prepared Megatron artifact
-        if: inputs.megatron_lm_fl_enabled == 'true' && inputs.megatron_cache_key != '' && steps.megatron_cache_restore.outputs.cache-hit != 'true' && inputs.megatron_artifact_available == 'true'
+        if: inputs.platform != 'cuda' && inputs.megatron_lm_fl_enabled == 'true' && inputs.megatron_cache_key != '' && steps.megatron_cache_restore.outputs.cache-hit != 'true' && inputs.megatron_artifact_available == 'true'
         uses: actions/download-artifact@v4
         with:
           name: prepared-megatron-${{ inputs.platform }}-${{ github.run_id }}
           path: megatron-lm-fl-install
 
       - name: Restore prepared TE-FL artifact
-        if: inputs.te_fl_enabled == 'true' && inputs.te_fl_cache_key != '' && steps.te_fl_cache_restore.outputs.cache-hit != 'true' && inputs.te_fl_artifact_available == 'true'
+        if: inputs.platform != 'cuda' && inputs.te_fl_enabled == 'true' && inputs.te_fl_cache_key != '' && steps.te_fl_cache_restore.outputs.cache-hit != 'true' && inputs.te_fl_artifact_available == 'true'
         uses: actions/download-artifact@v4
         with:
           name: prepared-te-fl-${{ inputs.platform }}-${{ github.run_id }}
           path: te-fl-wheel
+
+      - name: Recover and validate CUDA megatron runtime
+        if: inputs.platform == 'cuda' && inputs.megatron_lm_fl_enabled == 'true'
+        timeout-minutes: ${{ inputs.runtime_recovery_timeout_minutes }}
+        uses: ./FlagScale/.github/actions/restore-prepared-runtime
+        with:
+          kind: megatron
+          artifact-name: prepared-megatron-cuda-${{ github.run_id }}
+          artifact-available: ${{ inputs.megatron_artifact_available }}
+
+      - name: Recover and validate CUDA te runtime
+        if: inputs.platform == 'cuda' && inputs.te_fl_enabled == 'true'
+        timeout-minutes: ${{ inputs.runtime_recovery_timeout_minutes }}
+        uses: ./FlagScale/.github/actions/restore-prepared-runtime
+        with:
+          kind: te
+          artifact-name: prepared-te-fl-cuda-${{ github.run_id }}
+          artifact-available: ${{ inputs.te_fl_artifact_available }}
 
       - name: Validate prepared training runtime
         if: inputs.megatron_lm_fl_enabled == 'true' || inputs.te_fl_enabled == 'true'
@@ -326,7 +354,7 @@ jobs:
 
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
           exit $exit_code
-        timeout-minutes: 20
+        timeout-minutes: ${{ inputs.unit_timeout_minutes }}
 
       - name: Upload coverage report
         if: steps.unit_test.outcome == 'success'
