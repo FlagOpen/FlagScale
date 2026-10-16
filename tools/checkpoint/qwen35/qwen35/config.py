@@ -139,11 +139,30 @@ class Config:
         region is repeated ``num_loop_iterations`` times so the total is::
 
             prelude + loop_span * num_loop_iterations + coda
+
+        For ``loop_type='sdpa-wise'`` only the SDPA layers inside the range are
+        repeated, so the count grows by the number of those layers instead of by
+        the whole span.
         """
         if not self.is_loop:
             return self.num_layers
+        if self.loop_type == "sdpa-wise":
+            return self.num_layers + self.num_looped_sdpa_layers * (
+                self.num_loop_iterations - 1
+            )
         loop_span = self.loop_end_layer - self.loop_start_layer
         return self.num_layers + loop_span * (self.num_loop_iterations - 1)
+
+    @property
+    def num_looped_sdpa_layers(self):
+        """Number of SDPA layers inside the loop range (``sdpa-wise`` only)."""
+        from .gdn import is_gdn_layer
+
+        return sum(
+            1
+            for i in range(self.loop_start_layer, self.loop_end_layer)
+            if not is_gdn_layer(i, self.linear_attention_freq)
+        )
 
     def _validate_loop_config(self):
         """Sanity-check loop parameters when present."""
@@ -175,11 +194,21 @@ class Config:
                 raise ValueError(
                     f"loop_residual_scale must be positive, got {self.loop_residual_scale}."
                 )
-        _valid_loop_types = {"module-wise", "block-wise"}
+        _valid_loop_types = {"module-wise", "block-wise", "sdpa-wise"}
         if self.loop_type not in _valid_loop_types:
             raise ValueError(
                 f"loop_type must be one of {_valid_loop_types}, got '{self.loop_type}'."
             )
+        if self.loop_type == "sdpa-wise":
+            # Repeats only SDPA layers in place, so no block alignment is needed,
+            # but the range must actually contain an SDPA layer or the loop is a no-op.
+            if self.num_looped_sdpa_layers == 0:
+                raise ValueError(
+                    f"loop_type='sdpa-wise' found no SDPA layers in loop range "
+                    f"[{self.loop_start_layer}, {self.loop_end_layer}) with "
+                    f"linear_attention_freq={self.linear_attention_freq}; "
+                    f"the loop would be a no-op."
+                )
         if self.loop_type == "block-wise":
             if self.loop_block_size is None:
                 raise ValueError(

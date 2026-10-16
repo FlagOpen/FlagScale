@@ -184,8 +184,15 @@ def main():
         print(f"Expert-TP={cfg.expert_tp} (different from model TP)")
     print(f"Layers={cfg.num_layers}, hidden={cfg.hidden_size}")
     if cfg.is_loop:
+        if cfg.loop_type == "sdpa-wise":
+            scope = (
+                f"{cfg.num_looped_sdpa_layers} SDPA layers in "
+                f"[{cfg.loop_start_layer}, {cfg.loop_end_layer})"
+            )
+        else:
+            scope = f"layers [{cfg.loop_start_layer}, {cfg.loop_end_layer})"
         print(
-            f"Loop Transformer: layers [{cfg.loop_start_layer}, {cfg.loop_end_layer}) "
+            f"Loop Transformer ({cfg.loop_type}): {scope} "
             f"x {cfg.num_loop_iterations}, scale={cfg.loop_residual_scale}, "
             f"HF layers={cfg.hf_num_layers}"
         )

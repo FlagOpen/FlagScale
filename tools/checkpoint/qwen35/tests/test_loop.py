@@ -425,5 +425,129 @@ class TestScaleAbsorption:
                     )
 
 
+# ---------------------------------------------------------------------------
+# sdpa-wise loop tests
+# ---------------------------------------------------------------------------
+_SDPA_LOOP_FIELDS = {
+    "loop_start_layer": 10,
+    "loop_end_layer": 30,
+    "num_loop_iterations": 2,
+    "loop_residual_scale": 0.5,
+    "loop_type": "sdpa-wise",
+}
+
+
+class TestSdpaWiseConfig:
+    def test_num_looped_sdpa_layers(self):
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        # freq=4 -> SDPA at indices 3,7,11,...; in [10,30): 11,15,19,23,27
+        assert cfg.num_looped_sdpa_layers == 5
+
+    def test_hf_num_layers(self):
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        # only the 5 SDPA layers double: 40 + 5*(2-1) = 45
+        assert cfg.hf_num_layers == 45
+
+    def test_hf_num_layers_k3(self):
+        cfg = _make_cfg({**_SDPA_LOOP_FIELDS, "num_loop_iterations": 3})
+        assert cfg.hf_num_layers == 40 + 5 * 2
+
+    def test_no_block_size_required(self):
+        # span 20 is not required to divide by anything for sdpa-wise
+        cfg = _make_cfg({**_SDPA_LOOP_FIELDS, "loop_start_layer": 10, "loop_end_layer": 29})
+        assert cfg.loop_type == "sdpa-wise"
+
+    def test_validation_no_sdpa_in_range(self):
+        # [8,11) holds SDPA only at 11, which is excluded -> no-op
+        path = _make_cfg_expect_error(
+            {**_SDPA_LOOP_FIELDS, "loop_start_layer": 8, "loop_end_layer": 11}
+        )
+        try:
+            with pytest.raises(ValueError, match="no SDPA layers"):
+                Config(path)
+        finally:
+            os.unlink(path)
+
+    def test_invalid_loop_type_still_rejected(self):
+        path = _make_cfg_expect_error({**_LOOP_FIELDS, "loop_type": "bogus-wise"})
+        try:
+            with pytest.raises(ValueError, match="loop_type must be one of"):
+                Config(path)
+        finally:
+            os.unlink(path)
+
+
+class TestSdpaWiseExecutionPlan:
+    def test_plan_length(self):
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        assert len(plan) == cfg.hf_num_layers == 45
+
+    def test_hf_indices_contiguous(self):
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        assert [hf for hf, _, _, _ in plan] == list(range(45))
+
+    def test_layer_order_preserved(self):
+        """ABC -> ABBC must never reorder physical layers."""
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        phys = [p for _, p, _, _ in plan]
+        assert phys == sorted(phys)
+
+    def test_gdn_layers_execute_once(self):
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        counts = {}
+        for _, phys, _, _ in plan:
+            counts[phys] = counts.get(phys, 0) + 1
+        for layer in range(cfg.num_layers):
+            if is_gdn_layer(layer, cfg.linear_attention_freq):
+                assert counts[layer] == 1, f"GDN layer {layer} repeated"
+
+    def test_sdpa_in_range_execute_k_times(self):
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        counts = {}
+        for _, phys, _, _ in plan:
+            counts[phys] = counts.get(phys, 0) + 1
+        for layer in range(cfg.loop_start_layer, cfg.loop_end_layer):
+            if not is_gdn_layer(layer, cfg.linear_attention_freq):
+                assert counts[layer] == cfg.num_loop_iterations
+
+    def test_sdpa_outside_range_execute_once(self):
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        counts = {}
+        for _, phys, _, _ in plan:
+            counts[phys] = counts.get(phys, 0) + 1
+        for layer in (3, 7, 31, 35, 39):
+            assert counts[layer] == 1
+
+    def test_repeats_are_adjacent(self):
+        """Each SDPA layer's copies must be consecutive (in place, ABBC not ABCB)."""
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        for layer in (11, 15, 19, 23, 27):
+            idxs = [i for i, (_, p, _, _) in enumerate(plan) if p == layer]
+            assert idxs == list(range(idxs[0], idxs[0] + len(idxs)))
+
+    def test_gdn_in_range_not_marked_in_loop(self):
+        """GDN layers get in_loop=False so loop scale is not absorbed into them."""
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        for _, phys, in_loop, iteration in plan:
+            if is_gdn_layer(phys, cfg.linear_attention_freq):
+                assert in_loop is False
+                assert iteration == -1
+
+    def test_iterations_numbered_per_sdpa_layer(self):
+        cfg = _make_cfg(_SDPA_LOOP_FIELDS)
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        for layer in (11, 15, 19, 23, 27):
+            iters = [it for _, p, il, it in plan if p == layer and il]
+            assert iters == list(range(cfg.num_loop_iterations))
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

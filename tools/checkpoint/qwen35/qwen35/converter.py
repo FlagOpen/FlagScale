@@ -211,9 +211,10 @@ class BaseConverter:
         Returns a list of ``(hf_layer_idx, physical_layer_idx, in_loop,
         iteration)`` tuples.  For non-loop models this is never called.
 
-        Supports two loop types:
+        Supports three loop types:
         - module-wise: ABCD → ABCDABCD (entire loop range repeated)
         - block-wise:  ABCD with block_size=2 → ABABCDCD (each block repeated)
+        - sdpa-wise:   ABC → ABBC for B=SDPA (only SDPA layers repeated, in place)
         """
         cfg = self.cfg
         plan = []
@@ -235,6 +236,18 @@ class BaseConverter:
                 block_end = min(block_start + block_size, cfg.loop_end_layer)
                 for iteration in range(cfg.num_loop_iterations):
                     for phys in range(block_start, block_end):
+                        plan.append((hf_idx, phys, True, iteration))
+                        hf_idx += 1
+        elif loop_type == "sdpa-wise":
+            # GDN layers execute once and are not part of the loop, so they get
+            # in_loop=False and iteration=-1 — that keeps _absorb_loop_scale from
+            # touching them, matching training where they receive no loop_iter.
+            for phys in range(cfg.loop_start_layer, cfg.loop_end_layer):
+                if is_gdn_layer(phys, cfg.linear_attention_freq):
+                    plan.append((hf_idx, phys, False, -1))
+                    hf_idx += 1
+                else:
+                    for iteration in range(cfg.num_loop_iterations):
                         plan.append((hf_idx, phys, True, iteration))
                         hf_idx += 1
         else:
@@ -341,7 +354,13 @@ class BaseConverter:
                     f"[{layer_type}] loop iter={iteration}, scale={iter_scale}"
                 )
             elif cfg.is_loop:
-                region = "prelude" if phys_idx < cfg.loop_start_layer else "coda"
+                if phys_idx < cfg.loop_start_layer:
+                    region = "prelude"
+                elif phys_idx >= cfg.loop_end_layer:
+                    region = "coda"
+                else:
+                    # sdpa-wise: a GDN layer inside the loop range, executed once
+                    region = "in range, not looped"
                 print(
                     f"  HF layer {hf_idx:>3d} <- physical {phys_idx:>3d} "
                     f"[{layer_type}] ({region})"
