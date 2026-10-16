@@ -60,6 +60,8 @@ setup_script: .github/scripts/set_env_enflame.sh
 test_matrix:
   unit:
     nproc_per_node: 2
+    # Include worker shutdown and coverage aggregation in the step budget.
+    timeout_minutes: 30
 
 # =============================================================================
 # Dependencies Configuration (Megatron-LM-FL & TE-FL)
