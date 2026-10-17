@@ -803,14 +803,8 @@ class TaskEncoder(
             boundaries[-1] = max_seq_len
             cu_seqlens = torch.tensor(boundaries, dtype=torch.int32)
 
-        keys = [s.__key__ for s in samples]
-        # Energon 7 requires metadata that was absent from the Energon 6 Batch.
-        # BatchDataset replaces the empty restore key with the actual batch key.
-        metadata = {"__key__": keys, "__restore_key__": ()}
-        batch_fields = {field.name for field in dataclasses.fields(VQATaskBatch)}
         batch = VQATaskBatch(
-            **{name: value for name, value in metadata.items() if name in batch_fields},
-            __keys__=keys,
+            __keys__=[s.__key__ for s in samples],
             __subflavors__=[s.__subflavors__ for s in samples],
             imgs=imgs,
             videos=videos,
