@@ -115,6 +115,27 @@ def test_unpacked_batch_has_no_packing_metadata(encoder):
     assert "cu_seqlens" not in batch
 
 
+@pytest.mark.parametrize("packed", [False, True])
+def test_batch_preserves_energon_metadata(encoder, packed):
+    samples = [sample("a", [1, 2]), sample("b", [3, 4])]
+    if packed:
+        samples = [encoder.pack_selected_samples(samples)]
+    batch = encoder.batch(samples)
+    keys = [s.__key__ for s in samples]
+    assert batch.__keys__ == keys
+    # Energon 7 adds these fields; the Energon 6 batch schema is unchanged.
+    if hasattr(batch, "__key__"):
+        assert batch.__key__ == keys
+        assert batch.__restore_key__ == ()
+        # Preserve the key that Energon's BatchDataset sets before encode_batch.
+        batch.__restore_key__ = ("BatchDataset", 0, ("sample", 0))
+    encoded = encoder.encode_batch(batch)
+    assert encoded["__keys__"] == keys
+    if hasattr(batch, "__key__"):
+        assert encoded["__key__"] == keys
+        assert encoded["__restore_key__"] == batch.__restore_key__
+
+
 def test_packed_batch_rejects_truncation_and_multiple_rows(encoder):
     packed = encoder.pack_selected_samples([sample("a", [1, 2, 3]), sample("b", [4, 5])])
     with pytest.raises(ValueError, match="micro_batch_size"):
