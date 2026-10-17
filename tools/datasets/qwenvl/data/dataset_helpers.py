@@ -29,12 +29,12 @@ import torch
 import transformers
 from packaging.version import Version as PkgVersion
 from PIL import Image
-from tools.datasets.qwenvl.data.energon.chatml import ChatMLSample
-from tools.datasets.qwenvl.data.image_processing import get_visual_transform
 
 from megatron.energon import Batch, DefaultTaskEncoder, VQASample
 from megatron.training import get_args
 from megatron.training.global_vars import get_tokenizer
+from tools.datasets.qwenvl.data.energon.chatml import ChatMLSample
+from tools.datasets.qwenvl.data.image_processing import get_visual_transform
 
 dataset_logger = logging.getLogger(__name__)
 FIRST_MAX_PADDING_FLAG = True
