@@ -3,11 +3,18 @@
 
 """CPU regression tests for sample boundaries in Qwen3.5 multimodal packing."""
 
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import torch
+
+# Match the training script entry point: train_gpt imports sibling modules
+# such as gpt_builders and model_provider using top-level names.
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "flagscale/train/megatron"))
 
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.multi_token_prediction import roll_tensor
