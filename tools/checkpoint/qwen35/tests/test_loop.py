@@ -477,6 +477,47 @@ class TestSdpaWiseConfig:
             os.unlink(path)
 
 
+class TestLayerWiseAlias:
+    """'layer-wise' is an alias for block-wise with block_size=1 (ABC -> AABBCC)."""
+
+    def test_normalised_to_block_wise(self):
+        cfg = _make_cfg({**_LOOP_FIELDS, "loop_type": "layer-wise"})
+        assert cfg.loop_type == "block-wise"
+        assert cfg.loop_block_size == 1
+
+    def test_block_size_1_is_explicitly_allowed(self):
+        cfg = _make_cfg({**_LOOP_FIELDS, "loop_type": "block-wise", "loop_block_size": 1})
+        assert cfg.loop_block_size == 1
+
+    def test_plan_matches_block_wise_1(self):
+        a = _make_cfg({**_LOOP_FIELDS, "loop_type": "layer-wise"})
+        b = _make_cfg({**_LOOP_FIELDS, "loop_type": "block-wise", "loop_block_size": 1})
+        assert (MoEConverter(a)._build_loop_execution_plan()
+                == MoEConverter(b)._build_loop_execution_plan())
+
+    def test_repeats_are_adjacent(self):
+        cfg = _make_cfg({**_LOOP_FIELDS, "loop_type": "layer-wise"})
+        plan = MoEConverter(cfg)._build_loop_execution_plan()
+        for layer in range(cfg.loop_start_layer, cfg.loop_end_layer):
+            idxs = [i for i, (_, p, _, _) in enumerate(plan) if p == layer]
+            assert idxs == list(range(idxs[0], idxs[0] + cfg.num_loop_iterations))
+
+    def test_hf_num_layers_unaffected_by_block_size(self):
+        cfg = _make_cfg({**_LOOP_FIELDS, "loop_type": "layer-wise"})
+        span = cfg.loop_end_layer - cfg.loop_start_layer
+        assert cfg.hf_num_layers == cfg.num_layers + span * (cfg.num_loop_iterations - 1)
+
+    def test_conflicting_block_size_rejected(self):
+        path = _make_cfg_expect_error(
+            {**_LOOP_FIELDS, "loop_type": "layer-wise", "loop_block_size": 4}
+        )
+        try:
+            with pytest.raises(ValueError, match="implies loop_block_size=1"):
+                Config(path)
+        finally:
+            os.unlink(path)
+
+
 class TestSdpaWiseExecutionPlan:
     def test_plan_length(self):
         cfg = _make_cfg(_SDPA_LOOP_FIELDS)

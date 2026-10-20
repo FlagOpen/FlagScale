@@ -194,11 +194,22 @@ class Config:
                 raise ValueError(
                     f"loop_residual_scale must be positive, got {self.loop_residual_scale}."
                 )
-        _valid_loop_types = {"module-wise", "block-wise", "sdpa-wise"}
+        _valid_loop_types = {"module-wise", "block-wise", "sdpa-wise", "layer-wise"}
         if self.loop_type not in _valid_loop_types:
             raise ValueError(
                 f"loop_type must be one of {_valid_loop_types}, got '{self.loop_type}'."
             )
+        if self.loop_type == "layer-wise":
+            # Alias for block-wise with block_size=1 (ABC -> AABBCC). Normalised to
+            # match the training side, which does the same in its __post_init__, so
+            # the conversion plan stays in lockstep with the execution plan.
+            if self.loop_block_size not in (None, 1):
+                raise ValueError(
+                    f"loop_type='layer-wise' implies loop_block_size=1, but "
+                    f"loop_block_size={self.loop_block_size} was given."
+                )
+            self.loop_type = "block-wise"
+            self.loop_block_size = 1
         if self.loop_type == "sdpa-wise":
             # Repeats only SDPA layers in place, so no block alignment is needed,
             # but the range must actually contain an SDPA layer or the loop is a no-op.
