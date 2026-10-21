@@ -117,6 +117,11 @@ class Config:
             self.loop_residual_scale = self.loop_residual_scale[0]
         self.loop_type = cfg.get("loop_type", "module-wise")
         self.loop_block_size = cfg.get("loop_block_size", None)
+        # Per-loop-iteration key LoRA. Training keeps the fused checkpoint keys, so
+        # the only thing conversion has to do is fold each iteration's delta into
+        # that iteration's copy of in_proj -- after which the exported model is an
+        # ordinary one and needs no inference-side support.
+        self.loop_gdn_key_lora_rank = cfg.get("loop_gdn_key_lora_rank", None)
         self._validate_loop_config()
 
         # MTP params: optional

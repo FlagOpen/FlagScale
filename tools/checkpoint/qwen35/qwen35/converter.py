@@ -261,6 +261,60 @@ class BaseConverter:
         )
         return plan
 
+    def _absorb_key_lora(self, full_sd, mg_pfx, in_proj_weight, iteration):
+        """Fold the per-iteration key LoRA delta into a copy of ``in_proj.weight``.
+
+        Training computes the key as ``linear(norm(x))[k] + (norm(x) @ down) @ up``.
+        Because the delta is a side branch on the *post-norm* activation, it is
+        equivalent to adding ``(down @ up)^T`` to the key rows of the weight --
+        which is what lets each loop iteration be exported as an ordinary layer.
+
+        ``iteration < 0`` means the layer is not looped, so there is no delta.
+        The sum is done in fp32 and cast back, so the merge does not add a second
+        rounding step on top of the bf16 product.
+        """
+        cfg = self.cfg
+        if not getattr(cfg, "loop_gdn_key_lora_rank", None) or iteration < 0:
+            return in_proj_weight
+
+        down_key = f"{mg_pfx}.self_attention.key_lora_down"
+        up_key = f"{mg_pfx}.self_attention.key_lora_up"
+        if down_key not in full_sd or up_key not in full_sd:
+            raise KeyError(
+                f"loop_gdn_key_lora_rank is set but {down_key} / {up_key} are missing "
+                f"from the checkpoint; the training run may not have used key LoRA."
+            )
+        down = full_sd[down_key][iteration].float()   # [hidden, rank], not TP-sharded
+        up = full_sd[up_key][iteration].float()       # [rank, qk_dim] (TP-concatenated)
+        delta = (down @ up).T                         # [qk_dim, hidden]
+
+        qk_dim = cfg.linear_key_head_dim * cfg.linear_num_key_heads
+        if delta.shape[0] != qk_dim:
+            raise ValueError(
+                f"key LoRA delta has {delta.shape[0]} rows, expected qk_dim={qk_dim}."
+            )
+
+        # The merged in_proj is TP-rank-grouped, not a flat [q|k|v|z|beta|alpha]:
+        # split_gdn_in_proj reshapes it to [tp, per_rank_dim, hidden]. So the key
+        # rows live at a per-rank offset and a flat slice would hit the wrong rows
+        # for tp > 1. Walk the ranks and apply each one's share of the delta.
+        tp_size = cfg.tp
+        v_dim = cfg.linear_value_head_dim * cfg.linear_num_value_heads
+        per_rank_dim = in_proj_weight.shape[0] // tp_size
+        expected = (qk_dim * 2 + v_dim * 2 + cfg.linear_num_value_heads * 2) // tp_size
+        if per_rank_dim != expected:
+            raise ValueError(
+                f"unexpected in_proj layout: per_rank_dim={per_rank_dim}, "
+                f"expected {expected} (tp={tp_size})."
+            )
+        qk_local = qk_dim // tp_size
+        w = in_proj_weight.float().clone()
+        for rank in range(tp_size):
+            base = rank * per_rank_dim
+            k_start = base + qk_local          # q occupies the first qk_local rows
+            w[k_start : k_start + qk_local] += delta[rank * qk_local : (rank + 1) * qk_local]
+        return w.to(in_proj_weight.dtype)
+
     def _absorb_loop_scale(self, hf_sd, hf_pfx, phys_idx, iteration=0):
         """Multiply ``loop_residual_scale`` into output-projection weights.
 
@@ -378,7 +432,11 @@ class BaseConverter:
 
                 mk = f"{mg_pfx}.self_attention.in_proj.weight"
                 if mk in full_sd:
-                    qkv, z, b, a = split_gdn_in_proj(full_sd[mk], cfg)
+                    # Fold this iteration's key delta in before splitting, so each
+                    # HF copy of the layer carries its own key projection and the
+                    # exported model needs no per-iteration machinery at inference.
+                    w = self._absorb_key_lora(full_sd, mg_pfx, full_sd[mk], iteration)
+                    qkv, z, b, a = split_gdn_in_proj(w, cfg)
                     hf_sd[f"{hf_pfx}.linear_attn.in_proj_qkv.weight"] = qkv
                     hf_sd[f"{hf_pfx}.linear_attn.in_proj_z.weight"] = z
                     hf_sd[f"{hf_pfx}.linear_attn.in_proj_b.weight"] = b
@@ -710,6 +768,16 @@ class BaseConverter:
                 merged[k] = _merge_gdn_conv1d(vals, cfg)
             elif "A_log" in k or "dt_bias" in k:
                 merged[k] = torch.cat(vals, dim=0)
+            elif "key_lora_up" in k:
+                # [num_loop_iterations, rank, qk_dim_local_tp]: the key dimension is
+                # TP-sharded, and it is the LAST axis here, not dim 0.
+                merged[k] = torch.cat(vals, dim=2)
+            elif "key_lora_down" in k:
+                # [num_loop_iterations, hidden, rank]: replicated across TP ranks.
+                merged[k] = vals[0]
+            elif "loop_dt_offset" in k:
+                # [num_loop_iterations, num_v_heads_local_tp], TP along dim 1.
+                merged[k] = torch.cat(vals, dim=1)
             elif "out_norm" in k:
                 merged[k] = vals[0]
             elif "out_proj.weight" in k:

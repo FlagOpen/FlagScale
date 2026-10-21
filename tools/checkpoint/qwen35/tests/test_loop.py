@@ -590,5 +590,96 @@ class TestSdpaWiseExecutionPlan:
             assert iters == list(range(cfg.num_loop_iterations))
 
 
+class TestKeyLoraAbsorption:
+    """Per-iteration key LoRA is folded into each iteration's in_proj copy."""
+
+    FIELDS = {**_LOOP_FIELDS, "loop_type": "layer-wise", "loop_gdn_key_lora_rank": 4}
+
+    def _sd(self, cfg, mg_pfx, scale=1.0):
+        qk = cfg.linear_key_head_dim * cfg.linear_num_key_heads
+        v = cfg.linear_value_head_dim * cfg.linear_num_value_heads
+        dim = qk * 2 + v * 2 + cfg.linear_num_value_heads * 2
+        r = cfg.loop_gdn_key_lora_rank
+        R = cfg.num_loop_iterations
+        return {
+            f"{mg_pfx}.self_attention.key_lora_down":
+                torch.full((R, cfg.hidden_size, r), scale),
+            f"{mg_pfx}.self_attention.key_lora_up":
+                torch.full((R, r, qk), scale),
+        }, torch.zeros(dim, cfg.hidden_size)
+
+    def test_no_op_when_disabled(self):
+        cfg = _make_cfg(_LOOP_FIELDS)
+        conv = MoEConverter(cfg)
+        w = torch.randn(8, cfg.hidden_size)
+        assert conv._absorb_key_lora({}, "x", w, 0) is w
+
+    def test_no_op_for_unlooped_layer(self):
+        cfg = _make_cfg(self.FIELDS)
+        conv = MoEConverter(cfg)
+        sd, w = self._sd(cfg, "x")
+        # iteration < 0 marks a layer outside the loop
+        assert conv._absorb_key_lora(sd, "x", w, -1) is w
+
+    def test_missing_params_raise(self):
+        cfg = _make_cfg(self.FIELDS)
+        conv = MoEConverter(cfg)
+        _, w = self._sd(cfg, "x")
+        with pytest.raises(KeyError, match="key LoRA"):
+            conv._absorb_key_lora({}, "x", w, 0)
+
+    def test_delta_lands_only_on_key_rows(self):
+        cfg = _make_cfg(self.FIELDS)
+        conv = MoEConverter(cfg)
+        sd, w = self._sd(cfg, "x")
+        out = conv._absorb_key_lora(sd, "x", w, 0)
+        qk = cfg.linear_key_head_dim * cfg.linear_num_key_heads
+        tp = cfg.tp
+        per_rank = w.shape[0] // tp
+        qk_local = qk // tp
+        expected = torch.zeros(w.shape[0], dtype=torch.bool)
+        for rank in range(tp):
+            base = rank * per_rank
+            expected[base + qk_local : base + 2 * qk_local] = True
+        touched = (out - w).abs().sum(dim=1) > 0
+        assert torch.equal(touched, expected), "delta hit non-key rows"
+
+    def test_iterations_give_different_deltas(self):
+        cfg = _make_cfg(self.FIELDS)
+        conv = MoEConverter(cfg)
+        qk = cfg.linear_key_head_dim * cfg.linear_num_key_heads
+        v = cfg.linear_value_head_dim * cfg.linear_num_value_heads
+        dim = qk * 2 + v * 2 + cfg.linear_num_value_heads * 2
+        r, R = cfg.loop_gdn_key_lora_rank, cfg.num_loop_iterations
+        torch.manual_seed(0)
+        sd = {
+            "x.self_attention.key_lora_down": torch.randn(R, cfg.hidden_size, r),
+            "x.self_attention.key_lora_up": torch.randn(R, r, qk),
+        }
+        w = torch.zeros(dim, cfg.hidden_size)
+        a = conv._absorb_key_lora(sd, "x", w, 0)
+        b = conv._absorb_key_lora(sd, "x", w, 1)
+        assert not torch.allclose(a, b), "iterations must differ -- that is the point"
+
+    def test_zero_up_absorbs_to_identity(self):
+        """A zero `up` must fold to a no-op.
+
+        Training seeds `up` randomly, so this is not the init any more; it stays as
+        a check that absorption introduces nothing of its own when the delta is zero.
+        """
+        cfg = _make_cfg(self.FIELDS)
+        conv = MoEConverter(cfg)
+        qk = cfg.linear_key_head_dim * cfg.linear_num_key_heads
+        v = cfg.linear_value_head_dim * cfg.linear_num_value_heads
+        dim = qk * 2 + v * 2 + cfg.linear_num_value_heads * 2
+        r, R = cfg.loop_gdn_key_lora_rank, cfg.num_loop_iterations
+        sd = {
+            "x.self_attention.key_lora_down": torch.randn(R, cfg.hidden_size, r),
+            "x.self_attention.key_lora_up": torch.zeros(R, r, qk),
+        }
+        w = torch.randn(dim, cfg.hidden_size)
+        assert torch.allclose(conv._absorb_key_lora(sd, "x", w, 0), w)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
