@@ -54,7 +54,7 @@ jobs:
         with:
           node-version: '22'
       - name: Test CI comment authorization
-        run: node --test tests/ci/slash_command.test.cjs
+        run: node --test tests/ci/*.test.cjs
       - name: Test CI control logic (no accelerators required)
         run: python -m pytest --confcutdir=tests/ci tests/ci -q
       - name: pre-commit (changed files)

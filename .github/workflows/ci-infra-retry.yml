@@ -1,0 +1,38 @@
+# Copyright 2026 FlagOS Contributors
+# Licensed under the Apache License, Version 2.0.
+name: CI Infrastructure Retry
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: ci-infra-retry-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: >-
+      vars.CI_INFRA_RETRY_ENABLED == 'true' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # workflow_run has write permissions. Never check out the failed run's code.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts/ci
+      - name: Inspect trusted CI and retry eligible failed jobs once
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const retry = require('./.github/scripts/ci/infra_retry.cjs');
+            await retry({ github, context, core });
