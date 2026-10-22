@@ -7,11 +7,12 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-MODEL_DIR = "/share/project/lixianduo/models/Qwen3.6-35B-A3B"
-TMP_BASE = "/share/project/lixianduo/models/tmp"
-CONVERT_SCRIPT = "/share/project/lixianduo/codes/FlagScale/tools/checkpoint/qwen35/convert_qwen35.py"
-PYTHON = "/share/project/lixianduo/envs/fsa-train/bin/python"
+MODEL_DIR = os.environ.get("QWEN35_MODEL_DIR", "/path/to/models/Qwen3.6-35B-A3B")
+TMP_BASE = os.environ.get("QWEN35_TMP_BASE", "/path/to/models/tmp")
+CONVERT_SCRIPT = str(Path(__file__).resolve().parent / "convert_qwen35.py")
+PYTHON = os.environ.get("QWEN35_PYTHON", sys.executable)
 
 # Single critical test: TP=2, Expert-TP=1
 TP, PP, EP, EXPERT_TP = 2, 1, 1, 1

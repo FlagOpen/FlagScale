@@ -2,12 +2,12 @@
 """Test real Qwen 3.6-35B-A3B model conversion with various parallelism strategies.
 
 This script:
-1. Loads the real HF model from /share/project/lixianduo/models/Qwen3.6-35B-A3B
+1. Loads the real HF model from $QWEN35_MODEL_DIR
 2. Converts to Megatron with various (TP, PP, EP, Expert-TP) combinations
 3. Converts back to HF
 4. Compares key weights numerically
 
-All intermediate checkpoints are stored under /share/project/lixianduo/models/tmp/
+All intermediate checkpoints are stored under $QWEN35_TMP_BASE/
 """
 
 import json
@@ -67,10 +67,10 @@ TEST_CONFIGS = [
 ]
 
 # Paths
-MODEL_DIR = "/share/project/lixianduo/models/Qwen3.6-35B-A3B"
-TMP_BASE = "/share/project/lixianduo/models/tmp"
-CONVERT_SCRIPT = "/share/project/lixianduo/codes/FlagScale/tools/checkpoint/qwen35/convert_qwen35.py"
-PYTHON = "/share/project/lixianduo/envs/fsa-train/bin/python"
+MODEL_DIR = os.environ.get("QWEN35_MODEL_DIR", "/path/to/models/Qwen3.6-35B-A3B")
+TMP_BASE = os.environ.get("QWEN35_TMP_BASE", "/path/to/models/tmp")
+CONVERT_SCRIPT = str(Path(__file__).resolve().parent / "convert_qwen35.py")
+PYTHON = os.environ.get("QWEN35_PYTHON", sys.executable)
 
 
 def load_model_config(model_dir):
