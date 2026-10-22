@@ -16,11 +16,45 @@ name: Common All Tests
 
 on:
   workflow_call:
+    secrets:
+      FLAGCICD_API_TOKEN:
+        required: false
+        description: Optional FlagCICD report upload token; unavailable in fork PRs
     inputs:
+      source_repository:
+        type: string
+        required: false
+        default: ''
+        description: Explicit source repository for PR comment requests
+      source_sha:
+        type: string
+        required: false
+        default: ''
+        description: Immutable source commit for PR comment requests
       platform:
         required: true
         type: string
         description: Platform name (e.g., cuda, default)
+      megatron_cache_key:
+        required: false
+        type: string
+        default: ''
+        description: Megatron-LM-FL cache key from prepare_dependencies
+      megatron_artifact_available:
+        required: false
+        type: string
+        default: 'false'
+        description: Whether prepare_dependencies uploaded a same-run Megatron artifact
+      te_fl_cache_key:
+        required: false
+        type: string
+        default: ''
+        description: TE-FL cache key from prepare_dependencies
+      te_fl_artifact_available:
+        required: false
+        type: string
+        default: 'false'
+        description: Whether prepare_dependencies uploaded a same-run TE-FL artifact
       ci_train_image:
         required: false
         type: string
@@ -41,6 +75,42 @@ on:
         type: string
         description: Override container_volumes. Falls back to platform config if not set.
         default: ""
+      train_pkg_mgr:
+        required: false
+        type: string
+        default: ""
+      train_env_name:
+        required: false
+        type: string
+        default: ""
+      train_env_path:
+        required: false
+        type: string
+        default: ""
+      inference_pkg_mgr:
+        required: false
+        type: string
+        default: ""
+      inference_env_name:
+        required: false
+        type: string
+        default: ""
+      inference_env_path:
+        required: false
+        type: string
+        default: ""
+      serve_pkg_mgr:
+        required: false
+        type: string
+        default: ""
+      serve_env_name:
+        required: false
+        type: string
+        default: ""
+      serve_env_path:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   checkout_and_config:
@@ -55,15 +125,30 @@ jobs:
       runs_on: ${{ steps.config.outputs.runs_on }}
       container_volumes: ${{ steps.config.outputs.container_volumes }}
       container_options: ${{ steps.config.outputs.container_options }}
+      unit_timeout_minutes: ${{ steps.config.outputs.unit_timeout_minutes }}
+      runtime_recovery_timeout_minutes: ${{ steps.config.outputs.runtime_recovery_timeout_minutes }}
       device_types: ${{ steps.config.outputs.device_types }}
+      megatron_lm_fl_enabled: ${{ steps.config.outputs.megatron_lm_fl_enabled }}
+      te_fl_enabled: ${{ steps.config.outputs.te_fl_enabled }}
+      megatron_runtime_environment: ${{ steps.config.outputs.megatron_runtime_environment }}
+      te_fl_runtime_environment: ${{ steps.config.outputs.te_fl_runtime_environment }}
+      te_fl_install_pip_args: ${{ steps.config.outputs.te_fl_install_pip_args }}
+      te_fl_runtime_pip_packages: ${{ steps.config.outputs.te_fl_runtime_pip_packages }}
+      setup_script: ${{ steps.config.outputs.setup_script }}
       train_test_matrix: ${{ steps.config.outputs.train_test_matrix }}
       hetero_train_test_matrix: ${{ steps.config.outputs.hetero_train_test_matrix }}
       inference_test_matrix: ${{ steps.config.outputs.inference_test_matrix }}
       serve_test_matrix: ${{ steps.config.outputs.serve_test_matrix }}
       rl_test_matrix: ${{ steps.config.outputs.rl_test_matrix }}
       benchmark_test_matrix: ${{ steps.config.outputs.benchmark_test_matrix }}
-      pkg_mgr: ${{ steps.config.outputs.pkg_mgr }}
-      env_path: ${{ steps.config.outputs.env_path }}
+      inference_timeout_minutes: ${{ steps.config.outputs.inference_timeout_minutes }}
+      serve_ready_timeout_seconds: ${{ steps.config.outputs.serve_ready_timeout_seconds }}
+      pkg_mgr_train: ${{ steps.config.outputs.pkg_mgr_train || steps.config.outputs.pkg_mgr }}
+      pkg_mgr_inference: ${{ steps.config.outputs.pkg_mgr_inference || steps.config.outputs.pkg_mgr }}
+      pkg_mgr_serve: ${{ steps.config.outputs.pkg_mgr_serve || steps.config.outputs.pkg_mgr }}
+      env_path_train: ${{ steps.config.outputs.env_path_train || steps.config.outputs.env_path }}
+      env_path_inference: ${{ steps.config.outputs.env_path_inference || steps.config.outputs.env_path }}
+      env_path_serve: ${{ steps.config.outputs.env_path_serve || steps.config.outputs.env_path }}
       env_name_train: ${{ steps.config.outputs.env_name_train }}
       env_name_inference: ${{ steps.config.outputs.env_name_inference }}
       env_name_serve: ${{ steps.config.outputs.env_name_serve }}
@@ -74,8 +159,8 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           ssh-strict: true
           ssh-user: git
           persist-credentials: false
@@ -93,8 +178,8 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           ssh-strict: true
           ssh-user: git
           persist-credentials: false
@@ -111,8 +196,8 @@ jobs:
         id: checkout_attempt_3
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           ssh-strict: true
           ssh-user: git
           persist-credentials: false
@@ -157,6 +242,33 @@ jobs:
           if [ -n "${{ inputs.ci_inference_image }}" ]; then
             echo "ci_inference_image=${{ inputs.ci_inference_image }}" >> $GITHUB_OUTPUT
           fi
+          if [ -n "${{ inputs.train_pkg_mgr }}" ]; then
+            echo "pkg_mgr_train=${{ inputs.train_pkg_mgr }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ inputs.train_env_name }}" ]; then
+            echo "env_name_train=${{ inputs.train_env_name }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ inputs.train_env_path }}" ]; then
+            echo "env_path_train=${{ inputs.train_env_path }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ inputs.inference_pkg_mgr }}" ]; then
+            echo "pkg_mgr_inference=${{ inputs.inference_pkg_mgr }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ inputs.inference_env_name }}" ]; then
+            echo "env_name_inference=${{ inputs.inference_env_name }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ inputs.inference_env_path }}" ]; then
+            echo "env_path_inference=${{ inputs.inference_env_path }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ inputs.serve_pkg_mgr }}" ]; then
+            echo "pkg_mgr_serve=${{ inputs.serve_pkg_mgr }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ inputs.serve_env_name }}" ]; then
+            echo "env_name_serve=${{ inputs.serve_env_name }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ inputs.serve_env_path }}" ]; then
+            echo "env_path_serve=${{ inputs.serve_env_path }}" >> "$GITHUB_OUTPUT"
+          fi
           # Use single-quoted assignment so bash treats the JSON value literally
           # (double quotes inside the JSON would break echo "runs_on=${{ inputs.runs_on }}")
           RUNS_ON_INPUT='${{ inputs.runs_on }}'
@@ -174,14 +286,16 @@ jobs:
     needs: checkout_and_config
     uses: ./.github/workflows/functional_tests_cli.yml
     with:
+      source_repository: ${{ inputs.source_repository }}
+      source_sha: ${{ inputs.source_sha }}
       platform: ${{ inputs.platform }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
       runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
-      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr }}
+      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr_train }}
       env_name: ${{ needs.checkout_and_config.outputs.env_name_train }}
-      env_path: ${{ needs.checkout_and_config.outputs.env_path }}
+      env_path: ${{ needs.checkout_and_config.outputs.env_path_train }}
 
   unit_tests:
     needs:
@@ -193,17 +307,33 @@ jobs:
       matrix:
         device: ${{ fromJson(needs.checkout_and_config.outputs.device_types) }}
     uses: ./.github/workflows/unit_tests_common.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
     name: unit_tests
     with:
+      source_repository: ${{ inputs.source_repository }}
+      source_sha: ${{ inputs.source_sha }}
+      runtime_recovery_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
+      unit_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.unit_timeout_minutes) }}
       platform: ${{ inputs.platform }}
       device: ${{ matrix.device }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
       runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
-      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr }}
+      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr_train }}
       env_name: ${{ needs.checkout_and_config.outputs.env_name_train }}
-      env_path: ${{ needs.checkout_and_config.outputs.env_path }}
+      env_path: ${{ needs.checkout_and_config.outputs.env_path_train }}
+      megatron_cache_key: ${{ inputs.megatron_cache_key }}
+      megatron_artifact_available: ${{ inputs.megatron_artifact_available }}
+      te_fl_cache_key: ${{ inputs.te_fl_cache_key }}
+      te_fl_artifact_available: ${{ inputs.te_fl_artifact_available }}
+      megatron_lm_fl_enabled: ${{ needs.checkout_and_config.outputs.megatron_lm_fl_enabled }}
+      te_fl_enabled: ${{ needs.checkout_and_config.outputs.te_fl_enabled }}
+      megatron_runtime_environment: ${{ needs.checkout_and_config.outputs.megatron_runtime_environment }}
+      te_fl_runtime_environment: ${{ needs.checkout_and_config.outputs.te_fl_runtime_environment }}
+      te_fl_install_pip_args: ${{ needs.checkout_and_config.outputs.te_fl_install_pip_args }}
+      te_fl_runtime_pip_packages: ${{ needs.checkout_and_config.outputs.te_fl_runtime_pip_packages }}
 
   functional_tests_train:
     needs:
@@ -213,15 +343,28 @@ jobs:
     if: fromJson(needs.checkout_and_config.outputs.train_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_train.yml
     with:
+      source_repository: ${{ inputs.source_repository }}
+      source_sha: ${{ inputs.source_sha }}
+      runtime_recovery_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
       platform: ${{ inputs.platform }}
       test_matrix: ${{ needs.checkout_and_config.outputs.train_test_matrix }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
       runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
-      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr }}
+      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr_train }}
       env_name: ${{ needs.checkout_and_config.outputs.env_name_train }}
-      env_path: ${{ needs.checkout_and_config.outputs.env_path }}
+      env_path: ${{ needs.checkout_and_config.outputs.env_path_train }}
+      megatron_cache_key: ${{ inputs.megatron_cache_key }}
+      megatron_artifact_available: ${{ inputs.megatron_artifact_available }}
+      te_fl_cache_key: ${{ inputs.te_fl_cache_key }}
+      te_fl_artifact_available: ${{ inputs.te_fl_artifact_available }}
+      megatron_lm_fl_enabled: ${{ needs.checkout_and_config.outputs.megatron_lm_fl_enabled }}
+      te_fl_enabled: ${{ needs.checkout_and_config.outputs.te_fl_enabled }}
+      megatron_runtime_environment: ${{ needs.checkout_and_config.outputs.megatron_runtime_environment }}
+      te_fl_runtime_environment: ${{ needs.checkout_and_config.outputs.te_fl_runtime_environment }}
+      te_fl_install_pip_args: ${{ needs.checkout_and_config.outputs.te_fl_install_pip_args }}
+      te_fl_runtime_pip_packages: ${{ needs.checkout_and_config.outputs.te_fl_runtime_pip_packages }}
 
   functional_tests_hetero_train:
     needs:
@@ -231,51 +374,72 @@ jobs:
     if: fromJson(needs.checkout_and_config.outputs.hetero_train_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_hetero_train.yml
     with:
+      source_repository: ${{ inputs.source_repository }}
+      source_sha: ${{ inputs.source_sha }}
+      runtime_recovery_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
       platform: ${{ inputs.platform }}
       test_matrix: ${{ needs.checkout_and_config.outputs.hetero_train_test_matrix }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
       runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
-      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr }}
+      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr_train }}
       env_name: ${{ needs.checkout_and_config.outputs.env_name_train }}
-      env_path: ${{ needs.checkout_and_config.outputs.env_path }}
+      env_path: ${{ needs.checkout_and_config.outputs.env_path_train }}
+      megatron_cache_key: ${{ inputs.megatron_cache_key }}
+      megatron_artifact_available: ${{ inputs.megatron_artifact_available }}
+      te_fl_cache_key: ${{ inputs.te_fl_cache_key }}
+      te_fl_artifact_available: ${{ inputs.te_fl_artifact_available }}
+      megatron_lm_fl_enabled: ${{ needs.checkout_and_config.outputs.megatron_lm_fl_enabled }}
+      te_fl_enabled: ${{ needs.checkout_and_config.outputs.te_fl_enabled }}
+      megatron_runtime_environment: ${{ needs.checkout_and_config.outputs.megatron_runtime_environment }}
+      te_fl_runtime_environment: ${{ needs.checkout_and_config.outputs.te_fl_runtime_environment }}
+      te_fl_install_pip_args: ${{ needs.checkout_and_config.outputs.te_fl_install_pip_args }}
+      te_fl_runtime_pip_packages: ${{ needs.checkout_and_config.outputs.te_fl_runtime_pip_packages }}
 
   functional_tests_inference:
     needs:
       - checkout_and_config
       - cli_validation
       - unit_tests
-    if: fromJson(needs.checkout_and_config.outputs.inference_test_matrix)[0] != null
+    # TODO: Re-enable after vLLM-plugin-FL integration is restored
+    if: false  # Temporarily disabled - was: fromJson(needs.checkout_and_config.outputs.inference_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_inference.yml
     with:
+      source_repository: ${{ inputs.source_repository }}
+      source_sha: ${{ inputs.source_sha }}
       platform: ${{ inputs.platform }}
       test_matrix: ${{ needs.checkout_and_config.outputs.inference_test_matrix }}
       image: ${{ needs.checkout_and_config.outputs.ci_inference_image }}
       runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
-      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr }}
+      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr_inference }}
       env_name: ${{ needs.checkout_and_config.outputs.env_name_inference }}
-      env_path: ${{ needs.checkout_and_config.outputs.env_path }}
+      env_path: ${{ needs.checkout_and_config.outputs.env_path_inference }}
+      timeout_minutes: ${{ fromJSON(needs.checkout_and_config.outputs.inference_timeout_minutes) }}
 
   functional_tests_serve:
     needs:
       - checkout_and_config
       - cli_validation
       - unit_tests
-    if: fromJson(needs.checkout_and_config.outputs.serve_test_matrix)[0] != null
+    # TODO: Re-enable after vLLM-plugin-FL integration is restored
+    if: false  # Temporarily disabled - was: fromJson(needs.checkout_and_config.outputs.serve_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_serve.yml
     with:
+      source_repository: ${{ inputs.source_repository }}
+      source_sha: ${{ inputs.source_sha }}
       platform: ${{ inputs.platform }}
       test_matrix: ${{ needs.checkout_and_config.outputs.serve_test_matrix }}
       image: ${{ needs.checkout_and_config.outputs.ci_inference_image }}
       runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
-      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr }}
+      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr_serve }}
       env_name: ${{ needs.checkout_and_config.outputs.env_name_serve }}
-      env_path: ${{ needs.checkout_and_config.outputs.env_path }}
+      env_path: ${{ needs.checkout_and_config.outputs.env_path_serve }}
+      ready_timeout_seconds: ${{ fromJSON(needs.checkout_and_config.outputs.serve_ready_timeout_seconds) }}
 
   # NOTE: rl functional tests are temporarily disabled
   # functional_tests_rl:
@@ -302,16 +466,31 @@ jobs:
       - unit_tests
     if: fromJson(needs.checkout_and_config.outputs.benchmark_test_matrix)[0] != null
     uses: ./.github/workflows/functional_tests_benchmark.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
     with:
+      source_repository: ${{ inputs.source_repository }}
+      source_sha: ${{ inputs.source_sha }}
+      runtime_recovery_timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.runtime_recovery_timeout_minutes) }}
       platform: ${{ inputs.platform }}
       test_matrix: ${{ needs.checkout_and_config.outputs.benchmark_test_matrix }}
       image: ${{ needs.checkout_and_config.outputs.ci_train_image }}
       runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
-      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr }}
+      pkg_mgr: ${{ needs.checkout_and_config.outputs.pkg_mgr_train }}
       env_name: ${{ needs.checkout_and_config.outputs.env_name_train }}
-      env_path: ${{ needs.checkout_and_config.outputs.env_path }}
+      env_path: ${{ needs.checkout_and_config.outputs.env_path_train }}
+      megatron_cache_key: ${{ inputs.megatron_cache_key }}
+      megatron_artifact_available: ${{ inputs.megatron_artifact_available }}
+      te_fl_cache_key: ${{ inputs.te_fl_cache_key }}
+      te_fl_artifact_available: ${{ inputs.te_fl_artifact_available }}
+      megatron_lm_fl_enabled: ${{ needs.checkout_and_config.outputs.megatron_lm_fl_enabled }}
+      te_fl_enabled: ${{ needs.checkout_and_config.outputs.te_fl_enabled }}
+      megatron_runtime_environment: ${{ needs.checkout_and_config.outputs.megatron_runtime_environment }}
+      te_fl_runtime_environment: ${{ needs.checkout_and_config.outputs.te_fl_runtime_environment }}
+      te_fl_install_pip_args: ${{ needs.checkout_and_config.outputs.te_fl_install_pip_args }}
+      te_fl_runtime_pip_packages: ${{ needs.checkout_and_config.outputs.te_fl_runtime_pip_packages }}
 
   all_tests_complete:
     defaults:
@@ -335,6 +514,10 @@ jobs:
         run: |
           # Check all test jobs (skip if not run)
           failed=false
+          if [ "${{ needs.checkout_and_config.result }}" != "success" ]; then
+            echo "Platform configuration did not succeed"
+            failed=true
+          fi
 
           if [ "${{ needs.unit_tests.result }}" != "success" ] && \
              [ "${{ needs.unit_tests.result }}" != "skipped" ]; then
@@ -379,12 +562,7 @@ jobs:
             failed=true
           fi
 
-          # NOTE: Inference, serve, and rl checks disabled
-          # if [ "${{ needs.functional_tests_rl.result }}" != "success" ] && \
-          #    [ "${{ needs.functional_tests_rl.result }}" != "skipped" ]; then
-          #   echo "❌ RL functional tests failed"
-          #   failed=true
-          # fi
+          # RL remains disabled and is intentionally absent from this gate.
 
           if [ "$failed" = "true" ]; then
             exit 1

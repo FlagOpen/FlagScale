@@ -20,6 +20,8 @@ set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$SCRIPT_DIR/utils.sh"
+source "$PROJECT_ROOT/.github/scripts/set_env_common.sh"
+ci_resolve_python_bin
 
 # Defaults
 PLATFORM="default"
@@ -69,8 +71,17 @@ run_unit_tests_for_device() {
 
     log_info "Running unit tests for device: $device"
 
-    # Set up PYTHONPATH
-    export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/flagscale/train:${PYTHONPATH:-}"
+    # Match the functional runner: the FlagScale training overlay supplies
+    # megatron.training while the prepared runtime supplies megatron.core.
+    prepared_megatron_dir="${GITHUB_WORKSPACE:-$PROJECT_ROOT/..}/megatron-lm-fl-install"
+    if [ -d "$prepared_megatron_dir" ]; then
+        export MEGATRON_INSTALL_DIR="$prepared_megatron_dir"
+        ci_configure_training_pythonpath
+    else
+        log_error "Prepared Megatron-LM-FL runtime is required but was not found: $prepared_megatron_dir"
+        return 1
+    fi
+    export PYTHONNOUSERSITE=1
     export FLAGSCALE_TEST_PLATFORM="$PLATFORM"
     export FLAGSCALE_TEST_DEVICE_TYPE="$device"
     export FLAGSCALE_TEST_DIST_BACKEND="${FLAGSCALE_TEST_DIST_BACKEND:-$(default_dist_backend "$PLATFORM")}"
@@ -88,17 +99,17 @@ run_unit_tests_for_device() {
     echo "=========================================="
 
     # Get unit test patterns from platform configuration
-    PARSE_CMD="python \"$SCRIPT_DIR/parse_config.py\" --platform \"$PLATFORM\" --device \"$device\" --type unit"
-
-    PATTERNS=$(eval "$PARSE_CMD" 2>/dev/null) || {
+    PATTERNS=$(run_config_python "$PLATFORM" "$SCRIPT_DIR/parse_config.py" \
+        --platform "$PLATFORM" --device "$device" --type unit 2>/dev/null) || {
         log_error "Failed to parse test configuration for device: $device"
         return 1
     }
 
     # Extract include and exclude patterns using helper
-    PATTERN_OUTPUT=$(echo "$PATTERNS" | python "$SCRIPT_DIR/helpers.py" extract-patterns)
+    PATTERN_OUTPUT=$(echo "$PATTERNS" | run_config_python "$PLATFORM" "$SCRIPT_DIR/helpers.py" extract-patterns)
     INCLUDE=$(echo "$PATTERN_OUTPUT" | grep "^INCLUDE=" | cut -d= -f2-)
     EXCLUDE=$(echo "$PATTERN_OUTPUT" | grep "^EXCLUDE=" | cut -d= -f2-)
+    CONFIGURED_NPROC=$(echo "$PATTERN_OUTPUT" | grep "^NPROC_PER_NODE=" | cut -d= -f2-)
 
     # Build coverage config if COVERAGE_DIR is set
     USE_COVERAGE=false
@@ -112,48 +123,74 @@ parallel = true
 source = $PROJECT_ROOT
 data_file = $COVERAGE_DIR/.coverage
 EOF
+        if [ "$PLATFORM" = "enflame" ]; then
+            cat >> "$COVERAGERC" <<EOF
+omit = */_remote_module_non_scriptable
+
+[report]
+ignore_errors = true
+EOF
+        elif [ "$PLATFORM" = "ppu" ]; then
+            cat >> "$COVERAGERC" <<EOF
+omit = */_remote_module_non_scriptable
+EOF
+        fi
     fi
 
-    # Auto-detect accelerator count for the selected platform.
-    NPROC=$(detect_accelerator_count "$PLATFORM")
+    # Use the configured unit-test topology, or all visible accelerators.
+    NPROC=${CONFIGURED_NPROC:-$(detect_accelerator_count "$PLATFORM")}
     if ! [[ "$NPROC" =~ ^[0-9]+$ ]] || [ "$NPROC" -le 0 ]; then
-        NPROC=1
+        log_error "Invalid unit nproc_per_node: $NPROC"
+        return 1
     fi
-    log_info "Detected $NPROC accelerator(s)"
+    log_info "Using $NPROC process(es) for unit tests"
 
     # Use 'coverage run' instead of pytest-cov to avoid SQLite concurrent write conflicts:
     # each torchrun rank writes its own .coverage.<host>.<pid>.<random> fragment independently.
-    if [ "$USE_COVERAGE" = true ]; then
-        RUNNER_CMD="-m coverage run --rcfile=$COVERAGERC -m pytest"
+    if [ "$USE_COVERAGE" = true ] && [ "$PLATFORM" = "enflame" ]; then
+        # torch_gcu is imported by a site .pth file before coverage starts.
+        # Start the worker without site initialization, then add the regular
+        # package and project paths explicitly so coverage initializes first.
+        COVERAGE_BOOTSTRAP=$'import os, runpy, sys, sysconfig\n'
+        COVERAGE_BOOTSTRAP+=$'training_paths = [os.environ.get("MEGATRON_INSTALL_DIR", ""), os.environ.get("CI_TRAINING_OVERLAY_DIR", ""), os.environ.get("PROJECT_ROOT", "")]\n'
+        COVERAGE_BOOTSTRAP+=$'training_paths += [path for path in os.environ.get("PYTHONPATH", "").split(os.pathsep) if path]\n'
+        COVERAGE_BOOTSTRAP+=$'sys.path[:0] = [path for path in training_paths if path] + [sysconfig.get_path("purelib"), sysconfig.get_path("platlib")]\n'
+        COVERAGE_BOOTSTRAP+=$'sys.argv = sys.argv[1:]\nrunpy.run_module("coverage", run_name="__main__")'
+        RUNNER_CMD=(--no-python "$CI_PYTHON_BIN" -S -E -c "$COVERAGE_BOOTSTRAP" coverage run "--rcfile=$COVERAGERC" -m pytest)
+    elif [ "$USE_COVERAGE" = true ]; then
+        RUNNER_CMD=(-m coverage run "--rcfile=$COVERAGERC" -m pytest)
     else
-        RUNNER_CMD="-m pytest"
+        RUNNER_CMD=(-m pytest)
     fi
 
     TEST_TARGETS="tests/unit_tests/"
     if [ -n "$INCLUDE" ] && [ "$INCLUDE" != "*" ]; then
         TEST_TARGETS="$INCLUDE"
     fi
+    read -r -a TEST_TARGET_ARGS <<< "$TEST_TARGETS"
 
-    PYTEST_CMD="torchrun --nproc_per_node=$NPROC $RUNNER_CMD $TEST_TARGETS -v --tb=short"
-    wait_for_gpu
+    PYTEST_CMD=(torchrun "--nproc_per_node=$NPROC" "${RUNNER_CMD[@]}" "${TEST_TARGET_ARGS[@]}" -v --tb=short --durations=20 --durations-min=1)
+    wait_for_gpu || return 1
     # Apply exclude patterns if any
     if [ -n "$EXCLUDE" ]; then
-        PYTEST_CMD="torchrun --nproc_per_node=$NPROC $RUNNER_CMD $EXCLUDE $TEST_TARGETS -v --tb=short"
+        read -r -a EXCLUDE_ARGS <<< "$EXCLUDE"
+        PYTEST_CMD=(torchrun "--nproc_per_node=$NPROC" "${RUNNER_CMD[@]}" "${EXCLUDE_ARGS[@]}" "${TEST_TARGET_ARGS[@]}" -v --tb=short --durations=20 --durations-min=1)
     fi
 
-    log_info "Command: $PYTEST_CMD"
+    printf -v printable_cmd '%q ' "${PYTEST_CMD[@]}"
+    log_info "Command: $printable_cmd"
 
     # Run unit tests
     set +e
-    eval "$PYTEST_CMD"
+    "${PYTEST_CMD[@]}"
     local test_exit=$?
     set -e
 
     # All ranks have exited — safe to combine fragment files and generate report
     if [ "$USE_COVERAGE" = true ]; then
         log_info "Combining distributed coverage data..."
-        python -m coverage combine --rcfile="$COVERAGERC" "$COVERAGE_DIR"
-        python -m coverage json --rcfile="$COVERAGERC" -o "$COVERAGE_DIR/coverage.json"
+        "$CI_PYTHON_BIN" -m coverage combine --rcfile="$COVERAGERC" "$COVERAGE_DIR"
+        "$CI_PYTHON_BIN" -m coverage json --rcfile="$COVERAGERC" -o "$COVERAGE_DIR/coverage.json"
     fi
 
     return $test_exit
@@ -176,7 +213,7 @@ else
     log_info "Running tests for all devices: $DEVICE_TYPES"
 
     # Parse device types using helper
-    DEVICES=$(echo "$DEVICE_TYPES" | python "$SCRIPT_DIR/helpers.py" parse-devices)
+    DEVICES=$(echo "$DEVICE_TYPES" | run_config_python "$PLATFORM" "$SCRIPT_DIR/helpers.py" parse-devices)
 
     OVERALL_EXIT_CODE=0
     for device in $DEVICES; do

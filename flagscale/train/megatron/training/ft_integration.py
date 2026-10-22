@@ -47,7 +47,14 @@ import torch
 
 from . import arguments
 from . import global_vars
+from .async_utils import is_empty_async_queue
 from .utils import is_rank0, print_rank_0
+
+########## FlagScale Begin ##########
+from flagscale.train import gpu_heartbeat
+from megatron.plugin.platform import get_platform
+cur_platform = get_platform()
+########## FlagScale End ##########
 
 _GLOBAL_RANK_MONITOR_CLIENT = None
 
@@ -63,8 +70,6 @@ _curr_eval_iter_idx = 0
 _NUM_WARMUP_ITERS = 1  # Will be set by --ft-num-warmup-iters (default: 5)
 _MIN_ITERS_FOR_STEP_TIMEOUT_UPDATE = 16
 
-from megatron.plugin.platform import get_platform
-cur_platform = get_platform()
 
 def get_rank_monitor_client() -> Optional[Any]:
     """Returns the underlying fault tolerance client instance
@@ -77,6 +82,12 @@ def get_rank_monitor_client() -> Optional[Any]:
 
 def setup() -> None:
     """Initialize fault tolerance before initialize_megatron"""
+    ########## FlagScale Begin ##########
+    # GPU progress heartbeat is independent of the NVIDIA FT package. The runner
+    # enables it through environment variables, and this call is a no-op otherwise.
+    gpu_heartbeat.initialize_from_env()
+    gpu_heartbeat.set_phase("setup")
+    ########## FlagScale End ##########
     args = arguments.parse_args(ignore_unknown_args=True)
     if not args.enable_ft_package:
         return
@@ -122,6 +133,9 @@ def setup() -> None:
 
 def on_training_step_start() -> None:
     """Should be called before each training step"""
+    ########## FlagScale Begin ##########
+    gpu_heartbeat.set_phase("train")
+    ########## FlagScale End ##########
     rmon_cli = get_rank_monitor_client()
     if rmon_cli is not None:
         global _is_setup_section_open
@@ -137,6 +151,13 @@ def on_training_step_start() -> None:
 
 def on_training_step_end() -> None:
     """Should be called after each training step"""
+    ########## FlagScale Begin ##########
+    # This is the only hot-path operation: an in-memory progress counter update.
+    # The background publisher performs all JSON serialization and file I/O.
+    gpu_heartbeat.mark_training_progress(
+        getattr(global_vars.get_args(), "curr_iteration", None)
+    )
+    ########## FlagScale End ##########
     rmon_cli = get_rank_monitor_client()
     if rmon_cli is not None:
         global _seen_tr_iters_cnt
@@ -147,6 +168,9 @@ def on_training_step_end() -> None:
 
 def on_eval_step_start() -> None:
     """Should be called before each validation step"""
+    ########## FlagScale Begin ##########
+    gpu_heartbeat.set_phase("eval")
+    ########## FlagScale End ##########
     rmon_cli = get_rank_monitor_client()
     if rmon_cli is not None:
         global _is_setup_section_open
@@ -160,6 +184,9 @@ def on_eval_step_start() -> None:
 
 def on_eval_step_end() -> None:
     """Should be called after each validation step"""
+    ########## FlagScale Begin ##########
+    gpu_heartbeat.mark_progress("eval")
+    ########## FlagScale End ##########
     rmon_cli = get_rank_monitor_client()
     if rmon_cli is not None:
         global _curr_eval_iter_idx
@@ -168,19 +195,50 @@ def on_eval_step_end() -> None:
         _curr_eval_iter_idx += 1
 
 
-def on_checkpointing_start() -> None:
-    """Should be called before each checkpoint-saving-related operation."""
+def on_checkpointing_start(
+    is_async_finalization: bool = False,
+    blocking: bool = True,
+) -> None:
+    """Should be called before each checkpoint-saving-related operation.
+
+    Args:
+        is_async_finalization (bool): true for an async checkpoint finalization call.
+        blocking (bool): true if the finalization call can wait for pending work.
+    """
+    ########## FlagScale Begin ##########
+    # Non-blocking async finalization is polled before every training iteration and is
+    # usually a no-op. Only publish a checkpoint lifecycle when checkpoint work is
+    # definitely happening: a save call, or a blocking finalization with pending work.
+    should_track_checkpoint = not is_async_finalization or (
+        blocking and not is_empty_async_queue()
+    )
+    if should_track_checkpoint:
+        gpu_heartbeat.checkpoint_start(
+            getattr(global_vars.get_args(), "curr_iteration", None)
+        )
+    ########## FlagScale End ##########
     rmon_cli = get_rank_monitor_client()
     if rmon_cli is not None:
         rmon_cli.start_section("checkpointing")
 
 
-def on_checkpointing_end(is_async_finalization: bool) -> None:
+def on_checkpointing_end(
+    is_async_finalization: bool,
+    blocking: bool = True,
+) -> None:
     """Should be called after each checkpoint-saving-related operation.
 
     Args:
         is_async_finalization (bool): true if called after an async checkpointing finalization
+        blocking (bool): true if the finalization call could wait for pending work
     """
+    ########## FlagScale Begin ##########
+    # The matching start is always published for saves. Non-blocking finalization
+    # never opens a heartbeat checkpoint, while an empty blocking finalization makes
+    # checkpoint_end a cheap no-op in the heartbeat runtime.
+    if not is_async_finalization or blocking:
+        gpu_heartbeat.checkpoint_end()
+    ########## FlagScale End ##########
     rmon_cli = get_rank_monitor_client()
     if rmon_cli is not None:
         rmon_cli.end_section("checkpointing")
@@ -216,6 +274,9 @@ def shutdown() -> None:
         rmon_cli.shutdown_workload_monitoring()
         print_rank_0("FT: closed.")
     _GLOBAL_RANK_MONITOR_CLIENT = None
+    ########## FlagScale Begin ##########
+    gpu_heartbeat.shutdown()
+    ########## FlagScale End ##########
 
 
 def _load_state_if_exists():
@@ -330,7 +391,7 @@ def maybe_setup_simulated_fault() -> None:
     rank = torch.distributed.get_rank()
     rand_rank = rng.randint(0, torch.distributed.get_world_size() - 1)
     rank_to_fail = rank_to_fail if rank_to_fail is not None else rand_rank
-    rank_to_fail = torch.tensor([rank_to_fail], device=cur_platform.current_device())
+    rank_to_fail = torch.tensor([rank_to_fail], device=cur_platform.current_device())  # FlagScale
     torch.distributed.broadcast(rank_to_fail, 0)
     rank_to_fail = int(rank_to_fail.item())
 

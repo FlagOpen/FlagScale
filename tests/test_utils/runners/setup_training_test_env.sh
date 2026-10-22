@@ -48,6 +48,7 @@ done
 
 cd "$PROJECT_ROOT"
 source ./tools/install/utils/pyenv_utils.sh
+source ./.github/scripts/set_env_common.sh
 
 activate_python_env() {
     case "$PKG_MGR" in
@@ -77,12 +78,18 @@ activate_python_env() {
     esac
 }
 
+resolve_training_python() {
+    ci_resolve_python_bin
+    PYTHON_BIN="$CI_PYTHON_BIN"
+    ci_export_env CI_PYTHON_BIN "$PYTHON_BIN"
+}
+
 install_common_python_deps() {
-    python -m pip install coverage pytest-mock diffusers==0.36.0 transformers==4.57.6 --quiet --root-user-action=ignore
+    "$PYTHON_BIN" -m pip install coverage pytest pytest-mock diffusers==0.36.0 transformers==4.57.6 --quiet --root-user-action=ignore
 }
 
 install_flagscale_cli() {
-    python -m pip install . --no-build-isolation --root-user-action=ignore || {
+    "$PYTHON_BIN" -m pip install . --no-build-isolation --root-user-action=ignore || {
         echo "FlagScale CLI install failed"
         exit 1
     }
@@ -94,28 +101,34 @@ install_flagscale_cli() {
 }
 
 setup_cuda_training_env() {
-    local install_dir=""
-    if [ "$PKG_MGR" = "conda" ] && [ -n "$ENV_PATH" ]; then
-        install_dir=$(dirname "$ENV_PATH")
+    if [ "${FLAGSCALE_PREPARED_TRAINING_RUNTIME:-0}" != "1" ]; then
+        local install_dir=""
+        if [ "$PKG_MGR" = "conda" ] && [ -n "$ENV_PATH" ]; then
+            install_dir=$(dirname "$ENV_PATH")
+        fi
+
+        local install_args=(
+            --platform cuda
+            --task train
+            --pkg-mgr "$PKG_MGR"
+            --no-system --no-dev --no-base --no-task
+            --src-deps megatron-lm
+            --pip-deps typer
+            --force-build
+            --retry-count 3
+        )
+        [ -n "$ENV_NAME" ] && install_args+=(--env-name "$ENV_NAME")
+        [ -n "$install_dir" ] && install_args+=(--install-dir "$install_dir")
+
+        ./tools/install/install.sh "${install_args[@]}"
+    else
+        echo "Using prepared Megatron-LM-FL and TE-FL runtime"
     fi
 
-    local install_args=(
-        --platform cuda
-        --task train
-        --pkg-mgr "$PKG_MGR"
-        --no-system --no-dev --no-base --no-task
-        --src-deps megatron-lm
-        --pip-deps typer
-        --force-build
-        --retry-count 3
-    )
-    [ -n "$ENV_NAME" ] && install_args+=(--env-name "$ENV_NAME")
-    [ -n "$install_dir" ] && install_args+=(--install-dir "$install_dir")
-
-    ./tools/install/install.sh "${install_args[@]}"
-
     # TODO: remove after CI images contain these dependencies.
-    python -m pip install \
+    # Keep PyArrow compatible with the image's NumPy 1.x, and resolve s3fs
+    # against the fsspec version supported by datasets.
+    "$PYTHON_BIN" -m pip install \
         qwen_vl_utils==0.0.14 \
         diffusers==0.36.0 \
         websocket-client==1.8.0 \
@@ -123,29 +136,120 @@ setup_cuda_training_env() {
         websockets==15.0.1 \
         msgpack==1.1.0 \
         datasets==4.5.0 \
+        pyarrow==21.0.0 \
+        s3fs==2025.10.0 \
         https://baai-flagscale.ks3-cn-beijing.ksyuncs.com/whl/fast_hadamard_transform-1.1.0%2Bcu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
 }
 
 setup_metax_training_env() {
-    local megatron_dir="/tmp/Megatron-LM-FL"
-    local te_dir="/tmp/TransformerEngine-FL"
+    local required_files=(
+        /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo.bin
+        /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo.idx
+        /home/gitlab-runner/tokenizers/qwentokenizer/qwen.tiktoken
+        /home/gitlab-runner/tokenizers/qwentokenizer/tokenizer_config.json
+        /home/gitlab-runner/tokenizers/qwentokenizer/tokenization_qwen.py
+    )
+    local required_file
+    for required_file in "${required_files[@]}"; do
+        if [ ! -r "$required_file" ]; then
+            echo "Required MetaX training asset is missing or unreadable: $required_file" >&2
+            return 1
+        fi
+    done
 
-    git clone https://github.com/flagos-ai/Megatron-LM-FL.git "$megatron_dir"
-    python -m pip install "$megatron_dir" --no-build-isolation --root-user-action=ignore
+    if "$PYTHON_BIN" -c '
+import transformer_engine
+from megatron.core.models.gpt import GPTModel
+' >/dev/null 2>&1; then
+        echo "MetaX training stack is ready"
+        return 0
+    fi
 
-    git clone --depth 1 https://github.com/flagos-ai/TransformerEngine-FL.git "$te_dir"
-    TE_FL_SKIP_CUDA=1 python -m pip install "$te_dir" --no-build-isolation --root-user-action=ignore
-
-    apt-get update
-    apt-get install -y curl
+    echo "MetaX training stack is not importable in the active environment" >&2
+    return 1
 }
 
 setup_ascend_training_env() {
-    python -m pip install datasets==4.5.0 omegaconf==2.3.0 diffusers==0.36.0 hydra-core==1.3.2
-    echo "Ascend CI image is expected to provide platform runtime dependencies"
+    if TE_FL_SKIP_CUDA=1 "$PYTHON_BIN" -c '
+from megatron.core.extensions.transformer_engine import HAVE_TE
+from megatron.core.extensions.transformer_engine_spec_provider import TESpecProvider
+from megatron.core.models.gpt import GPTModel
+from transformer_engine.pytorch import DotProductAttention, LayerNormLinear
 
-    apt-get update
-    apt-get install -y curl
+assert HAVE_TE
+assert TESpecProvider is not None
+' >/dev/null 2>&1; then
+        echo "Ascend training stack is ready"
+        return 0
+    fi
+
+    echo "Ascend training stack is not importable in the active environment" >&2
+    return 1
+}
+
+setup_musa_training_env() {
+    if ! FS_PLATFORM=musa MG_FL_PREFER=musa \
+        "$PYTHON_BIN" -c 'import megatron.core; import torch_musa' >/dev/null 2>&1; then
+        if [ "${FLAGSCALE_PREPARED_TRAINING_RUNTIME:-0}" = "1" ]; then
+            echo "Prepared MUSA training runtime is not importable" >&2
+            return 1
+        fi
+        ./tools/install/install.sh \
+            --platform musa \
+            --task train \
+            --pkg-mgr "$PKG_MGR" \
+            --no-system --no-dev --no-base --no-task \
+            --src-deps megatron-lm \
+            --retry-count 3
+    fi
+
+    local required_files=(
+        /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo.bin
+        /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo.idx
+        /home/gitlab-runner/tokenizers/qwentokenizer/qwen.tiktoken
+        /home/gitlab-runner/tokenizers/qwentokenizer/tokenizer_config.json
+    )
+    local required_file
+    for required_file in "${required_files[@]}"; do
+        if [ ! -r "$required_file" ]; then
+            echo "Required MUSA training asset is missing or unreadable: $required_file" >&2
+            exit 1
+        fi
+    done
+
+    "$PYTHON_BIN" -c '
+import torch
+import torch_musa
+assert torch.musa.is_available()
+print(f"MUSA training environment ready on {torch.musa.device_count()} devices")
+'
+}
+
+setup_kunlunxin_training_env() {
+    if ! "$PYTHON_BIN" -m pytest --version >/dev/null 2>&1; then
+        install_common_python_deps
+    fi
+
+    if "$PYTHON_BIN" -c '
+import flagcx
+import megatron.core
+import torch
+import transformer_engine
+import transformer_engine_torch
+from megatron.core.jit import disable_jit_fuser
+from megatron.core.models.gpt.gpt_layer_specs import get_gpt_decoder_layer_specs
+
+assert torch.cuda.is_available()
+assert torch.cuda.device_count() == 8
+assert callable(disable_jit_fuser)
+assert callable(get_gpt_decoder_layer_specs)
+' >/dev/null 2>&1; then
+        echo "Kunlunxin training stack is ready"
+        return 0
+    fi
+
+    echo "Kunlunxin training stack is not importable in the active environment" >&2
+    return 1
 }
 
 copy_training_data() {
@@ -164,9 +268,10 @@ echo "Install FlagScale CLI: $INSTALL_CLI"
 echo "Install platform deps: $INSTALL_PLATFORM_DEPS"
 
 activate_python_env
+resolve_training_python
 
-echo "Python location: $(command -v python)"
-echo "Python version: $(python --version)"
+echo "Python location: $PYTHON_BIN"
+echo "Python version: $($PYTHON_BIN --version)"
 
 if [ "$INSTALL_COMMON_DEPS" = true ]; then
     install_common_python_deps
@@ -181,6 +286,8 @@ if [ "$INSTALL_PLATFORM_DEPS" = true ]; then
         cuda) setup_cuda_training_env ;;
         ascend) setup_ascend_training_env ;;
         metax) setup_metax_training_env ;;
+        musa) setup_musa_training_env ;;
+        kunlunxin) setup_kunlunxin_training_env ;;
         *) echo "No platform-specific training setup for $PLATFORM" ;;
     esac
 else

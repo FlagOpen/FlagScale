@@ -345,16 +345,6 @@ class LanguageTransformerBlock(TransformerBlock):
         with rng_context, outer_quantization_context:
             # Forward pass.
             if self.config.recompute_granularity == "full" and self.training:
-                if self._loop_enabled:
-                    print(
-                        f"[Loop] loop execution (checkpointed), "
-                        f"loop_type='{self.config.loop_type}', "
-                        f"exec_steps={len(self._execution_plan)}, "
-                        f"scales={self._loop_residual_scales}",
-                        flush=True,
-                    )
-                else:
-                    print("[Loop] without loop execution (checkpointed)", flush=True)
                 if visual_pos_masks is not None or deepstack_visual_embeds is not None:
                     assert (
                         self.config.recompute_method == "uniform"

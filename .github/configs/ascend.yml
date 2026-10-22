@@ -20,12 +20,12 @@ hardware_name: ascend
 display_name: "Ascend NPU Tests"
 
 # Docker image for this hardware
-ci_image: harbor.baai.ac.cn/flagscale/vllm-plugin-fl:v0.1.0-ascend-ci
-ci_train_image: harbor.baai.ac.cn/flagscale/vllm-plugin-fl:v0.1.0-ascend-ci
-ci_inference_image: harbor.baai.ac.cn/flagscale/vllm-plugin-fl:v0.1.0-ascend-ci
+ci_image: harbor.baai.ac.cn/flagos-dev/flagscale:manual-20260812-ascend-dev-inference
+ci_train_image: harbor.baai.ac.cn/flagos-dev/flagscale:manual-20260812-ascend-dev-train
+ci_inference_image: harbor.baai.ac.cn/flagos-dev/flagscale:manual-20260812-ascend-dev-inference
 
 # Runner labels for this hardware
-runner_labels: ["flagscale-ascend-ascend910-gpu2-32c-128g"]
+runner_labels: ["flagcicd-910c"]
 
 # Container volumes (hardware-specific paths)
 container_volumes:
@@ -35,6 +35,35 @@ container_volumes:
   - /usr/local/Ascend/add-ons:/usr/local/Ascend/add-ons:ro
   - /usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi:ro
 
+# Image build contract consumed by the generic build workflow.
+image_build:
+  enabled: true
+  registry: harbor.baai.ac.cn
+  target: dev
+  network: host
+  max_parallel: 1
+  registry_login: true
+  validation_script: tools/install/ascend/validate_image_build.sh
+  tasks:
+    train:
+      dockerfile: docker/ascend/Dockerfile.train
+      image: flagos-dev/flagscale-train
+      test_roles: [train]
+      base_image: harbor.baai.ac.cn/flagos-dev/megatron-lm-fl:manual-20260717-ascend-dev
+      build_args:
+        PKG_MGR: pip
+      source_refs:
+        FLAGSCALE_TE_REF: transformer_engine_fl
+        FLAGSCALE_MEGATRON_REF: megatron_lm_fl
+    inference:
+      dockerfile: docker/ascend/Dockerfile.inference
+      image: flagos-dev/flagscale-inference
+      test_roles: [inference]
+      base_image: harbor.baai.ac.cn/flagos-dev/flagscale:manual-20260812-ascend-dev-inference
+      build_args: {}
+      source_refs:
+        VLLM_PLUGIN_FL_REF: vllm_plugin_fl
+        FLAGGEMS_REF: flaggems
 # Container options for Ascend NPU (no --gpus, use --device for NPU cards)
 container_options: >-
   --device /dev/davinci_manager
@@ -55,6 +84,12 @@ container_options: >-
   --security-opt apparmor=unconfined
   --privileged
 
+# Runtime allowances for the currently validated Ascend images. Keep these
+# values in platform configuration so common workflows remain chip-agnostic.
+timeouts:
+  inference_minutes: 15
+  serve_ready_seconds: 600
+
 # =============================================================================
 # Package Manager Configuration
 # =============================================================================
@@ -71,3 +106,47 @@ env_names:
   inference: ""
   serve: ""
   rl: ""
+
+# Setup script for environment preparation
+setup_script: .github/scripts/set_env_ascend.sh
+
+# Test matrix configuration for unit tests
+test_matrix:
+  unit:
+    nproc_per_node: 2
+
+# =============================================================================
+# Dependencies Configuration (Megatron-LM-FL & TE-FL)
+# =============================================================================
+dependencies:
+  megatron_lm_fl:
+    enabled: true
+    repository: flagos-ai/Megatron-LM-FL
+    ref: main
+    runtime:
+      install_mode: pythonpath
+      environment: {}
+
+  te_fl:
+    enabled: true
+    repository: flagos-ai/TransformerEngine-FL
+    ref: main
+    build_mode: python
+    build_environment:
+      TE_FL_SKIP_CUDA: "1"
+    runtime:
+      environment:
+        TE_FL_SKIP_CUDA: "1"
+        TE_FL_PREFER: flagos
+      install_pip_args: []
+      pip_packages:
+        - "megatron-energon[av_decode]~=7.0"
+
+# Platform-owned paths. Shared/unrecognized code still runs every platform.
+paths_watch:
+  - docker/ascend/
+  - tools/install/ascend/
+  - requirements/ascend/
+  - .github/scripts/set_env_ascend.sh
+  - tests/test_utils/config/platforms/ascend.yaml
+  - .github/configs/ascend.yml

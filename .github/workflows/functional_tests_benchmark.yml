@@ -16,7 +16,26 @@ name: Common Functional Tests - Benchmark
 
 on:
   workflow_call:
+    secrets:
+      FLAGCICD_API_TOKEN:
+        required: false
+        description: Optional FlagCICD report upload token; unavailable in fork PRs
     inputs:
+      source_repository:
+        type: string
+        required: false
+        default: ''
+        description: Explicit source repository for PR comment requests
+      source_sha:
+        type: string
+        required: false
+        default: ''
+        description: Immutable source commit for PR comment requests
+      runtime_recovery_timeout_minutes:
+        required: false
+        type: number
+        default: 15
+        description: Budget for each prepared dependency download and validation step
       platform:
         required: true
         type: string
@@ -52,6 +71,46 @@ on:
         type: string
         description: Environment path (venv path for uv, conda installation path for conda)
         default: "/opt/venv"
+      megatron_cache_key:
+        required: false
+        type: string
+        default: ''
+      megatron_artifact_available:
+        required: false
+        type: string
+        default: 'false'
+      te_fl_cache_key:
+        required: false
+        type: string
+        default: ''
+      te_fl_artifact_available:
+        required: false
+        type: string
+        default: 'false'
+      megatron_lm_fl_enabled:
+        required: false
+        type: string
+        default: 'false'
+      te_fl_enabled:
+        required: false
+        type: string
+        default: 'false'
+      megatron_runtime_environment:
+        required: false
+        type: string
+        default: '{}'
+      te_fl_runtime_environment:
+        required: false
+        type: string
+        default: '{}'
+      te_fl_install_pip_args:
+        required: false
+        type: string
+        default: '[]'
+      te_fl_runtime_pip_packages:
+        required: false
+        type: string
+        default: '[]'
 
 jobs:
   functional_test_benchmark:
@@ -60,6 +119,7 @@ jobs:
         shell: bash
     env:
       PROJECT_ROOT: ${{ github.workspace }}/FlagScale
+      FLAGCICD_TOKEN_SET: ${{ secrets.FLAGCICD_API_TOKEN != '' }}
     runs-on: ${{ fromJson(inputs.runs_on) }}
     strategy:
       fail-fast: false
@@ -78,8 +138,8 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           path: FlagScale
           ssh-strict: true
           ssh-user: git
@@ -98,8 +158,8 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           path: FlagScale
           ssh-strict: true
           ssh-user: git
@@ -117,8 +177,8 @@ jobs:
         id: checkout_attempt_3
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           path: FlagScale
           ssh-strict: true
           ssh-user: git
@@ -137,6 +197,100 @@ jobs:
 
       - name: Check environment info
         run: cd $PROJECT_ROOT && bash ./tests/test_utils/runners/check_env.sh
+
+      - name: Reset prepared runtime directories
+        if: inputs.megatron_lm_fl_enabled == 'true' || inputs.te_fl_enabled == 'true'
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          rm -rf megatron-lm-fl-install te-fl-wheel
+
+      - name: Restore Megatron-LM-FL cache
+        if: inputs.megatron_lm_fl_enabled == 'true' && inputs.megatron_cache_key != ''
+        id: megatron_cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: megatron-lm-fl-install
+          key: ${{ inputs.megatron_cache_key }}
+          fail-on-cache-miss: false
+
+      - name: Restore TE-FL cache
+        if: inputs.te_fl_enabled == 'true' && inputs.te_fl_cache_key != ''
+        id: te_fl_cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: te-fl-wheel
+          key: ${{ inputs.te_fl_cache_key }}
+          fail-on-cache-miss: false
+
+      - name: Restore prepared Megatron artifact
+        if: inputs.platform != 'cuda' && inputs.megatron_lm_fl_enabled == 'true' && inputs.megatron_cache_key != '' && steps.megatron_cache_restore.outputs.cache-hit != 'true' && inputs.megatron_artifact_available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-megatron-${{ inputs.platform }}-${{ github.run_id }}
+          path: megatron-lm-fl-install
+
+      - name: Restore prepared TE-FL artifact
+        if: inputs.platform != 'cuda' && inputs.te_fl_enabled == 'true' && inputs.te_fl_cache_key != '' && steps.te_fl_cache_restore.outputs.cache-hit != 'true' && inputs.te_fl_artifact_available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-te-fl-${{ inputs.platform }}-${{ github.run_id }}
+          path: te-fl-wheel
+
+      - name: Recover and validate CUDA megatron runtime
+        if: inputs.platform == 'cuda' && inputs.megatron_lm_fl_enabled == 'true'
+        timeout-minutes: ${{ inputs.runtime_recovery_timeout_minutes }}
+        uses: ./FlagScale/.github/actions/restore-prepared-runtime
+        with:
+          kind: megatron
+          artifact-name: prepared-megatron-cuda-${{ github.run_id }}
+          artifact-available: ${{ inputs.megatron_artifact_available }}
+
+      - name: Recover and validate CUDA te runtime
+        if: inputs.platform == 'cuda' && inputs.te_fl_enabled == 'true'
+        timeout-minutes: ${{ inputs.runtime_recovery_timeout_minutes }}
+        uses: ./FlagScale/.github/actions/restore-prepared-runtime
+        with:
+          kind: te
+          artifact-name: prepared-te-fl-cuda-${{ github.run_id }}
+          artifact-available: ${{ inputs.te_fl_artifact_available }}
+
+      - name: Validate prepared training runtime
+        if: inputs.megatron_lm_fl_enabled == 'true' || inputs.te_fl_enabled == 'true'
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.megatron_lm_fl_enabled }}" = "true" ] && [ ! -f megatron-lm-fl-install/megatron/core/__init__.py ]; then
+            echo "::error::Prepared Megatron-LM-FL runtime is missing megatron/core/__init__.py" >&2
+            exit 1
+          fi
+          if [ "${{ inputs.te_fl_enabled }}" = "true" ]; then
+            mapfile -t te_fl_wheels < <(
+              find te-fl-wheel -maxdepth 1 -type f -name 'transformer_engine*.whl' -print 2>/dev/null | sort
+            )
+            if [ "${#te_fl_wheels[@]}" -ne 1 ]; then
+              echo "::error::Expected exactly one TE-FL wheel, found ${#te_fl_wheels[@]}" >&2
+              printf '  %s\n' "${te_fl_wheels[@]}" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Install prepared training runtime
+        if: inputs.megatron_lm_fl_enabled == 'true' || inputs.te_fl_enabled == 'true'
+        run: |
+          set -euo pipefail
+          cd $PROJECT_ROOT
+          export MEGATRON_LM_FL_ENABLED='${{ inputs.megatron_lm_fl_enabled }}'
+          export MEGATRON_CACHE_KEY='${{ inputs.megatron_cache_key }}'
+          export MEGATRON_RUNTIME_ENVIRONMENT='${{ inputs.megatron_runtime_environment }}'
+          export TE_FL_ENABLED='${{ inputs.te_fl_enabled }}'
+          export TE_FL_CACHE_KEY='${{ inputs.te_fl_cache_key }}'
+          export TE_FL_RUNTIME_ENVIRONMENT='${{ inputs.te_fl_runtime_environment }}'
+          export TE_FL_INSTALL_PIP_ARGS='${{ inputs.te_fl_install_pip_args }}'
+          export TE_FL_RUNTIME_PIP_PACKAGES='${{ inputs.te_fl_runtime_pip_packages }}'
+          export CI_RUNTIME_PKG_MGR='${{ inputs.pkg_mgr }}'
+          export CI_RUNTIME_ENV_NAME='${{ inputs.env_name }}'
+          export CI_RUNTIME_ENV_PATH='${{ inputs.env_path }}'
+          bash .github/scripts/install_training_runtime.sh
 
       - name: Install dependencies for benchmark
         run: |
@@ -197,9 +351,9 @@ jobs:
               ;;
           esac
 
-          # Display Python environment info
-          echo "Python location: $(which python)"
-          echo "Python version: $(python --version)"
+          # Display the interpreter selected during environment setup.
+          echo "Python location: ${CI_PYTHON_BIN:-python3}"
+          echo "Python version: $(${CI_PYTHON_BIN:-python3} --version)"
 
           # Collect GPU info before benchmark
           echo "=========================================="
@@ -262,8 +416,8 @@ jobs:
               ;;
           esac
 
-          echo "Python location: $(which python)"
-          echo "Python version: $(python --version)"
+          echo "Python location: ${CI_PYTHON_BIN:-python3}"
+          echo "Python version: $(${CI_PYTHON_BIN:-python3} --version)"
 
           LOG_FILE="tests/functional_tests/${TASK}/${MODEL}/test_results/${CASE}/logs/host_0_localhost.output"
           GOLD_FILE="tests/functional_tests/${TASK}/${MODEL}/gold_values/${CASE}.json"
@@ -274,27 +428,37 @@ jobs:
           echo "Gold values: $GOLD_FILE"
           echo "Output: $OUTPUT_FILE"
 
-          python tests/test_utils/runners/parse_benchmark_output.py \
+          "${CI_PYTHON_BIN:-python3}" tests/test_utils/runners/parse_benchmark_output.py \
             "$LOG_FILE" "$GOLD_FILE" "$OUTPUT_FILE"
 
       - name: Install jq
-        if: always() && steps.benchmark_test.outcome == 'success'
+        if: ${{ !cancelled() && env.FLAGCICD_TOKEN_SET == 'true' && vars.FLAGCICD_BENCHMARK_BACKEND_URL != '' && steps.benchmark_test.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
         run: apt-get update && apt-get install -y jq
 
+      - name: Explain skipped FlagCICD benchmark upload
+        if: ${{ !cancelled() && (env.FLAGCICD_TOKEN_SET != 'true' || vars.FLAGCICD_BENCHMARK_BACKEND_URL == '') }}
+        run: |
+          echo 'FlagCICD benchmark-${{ inputs.platform }}-${{ matrix.test_config.model }}-${{ matrix.test_config.case }}: Skipped: FLAGCICD_API_TOKEN or FLAGCICD_BENCHMARK_BACKEND_URL unavailable' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload benchmark data to backend
-        if: always() && steps.benchmark_test.outcome == 'success'
-        uses: flagos-ai/FlagOps/actions/post-benchmark-report@main
+        if: ${{ !cancelled() && env.FLAGCICD_TOKEN_SET == 'true' && vars.FLAGCICD_BENCHMARK_BACKEND_URL != '' && steps.benchmark_test.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: flagos-ai/FlagOps/actions/post-benchmark-report@466de7d164bf6ca3989c0abaeba1c3a62c68a047
         env:
-          NO_PROXY: "flagcicd-inner.flagos.net"
+          NO_PROXY: "flagcicd.flagos.net"
         with:
-          backend_url: 'http://flagcicd-inner.flagos.net:8000'
-          user_id: '000000000000000000'
+          # Benchmark action appends /list/*; do not pass the coverage metrics endpoint.
+          backend_url: ${{ vars.FLAGCICD_BENCHMARK_BACKEND_URL }}
+          api_token: ${{ secrets.FLAGCICD_API_TOKEN }}
           report_path: ${{ env.PROJECT_ROOT }}/tests/functional_tests/${{ matrix.test_config.task }}/${{ matrix.test_config.model }}/test_results/${{ matrix.test_config.case }}/logs/benchmark_metrics.json
           list_code: 'benchmark_${{ matrix.test_config.task }}_${{ matrix.test_config.model }}_${{ matrix.test_config.case }}'
           list_name: 'Benchmark-${{ matrix.test_config.model }}-${{ matrix.test_config.case }}'
           header_config: '[{"field":"metric","name":"Benchmark Metric","required":true,"sortable":true,"type":"string"},{"field":"values","name":"Per Step Details","required":false,"sortable":false,"type":"array"},{"field":"avg","name":"Avg","required":true,"sortable":true,"type":"number"},{"field":"p50","name":"P50","required":true,"sortable":true,"type":"number"},{"field":"p99","name":"P99","required":true,"sortable":true,"type":"number"}]'
           repository_name: '${{ github.repository }}'
-          commit_id: '${{ github.event.pull_request.head.sha || github.sha }}'
+          commit_id: '${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}'
           workflow_id: '${{ github.run_id }}'
           runner_set_name: ${{ fromJson(inputs.runs_on)[0] }}
           fail_on_error: 'false'

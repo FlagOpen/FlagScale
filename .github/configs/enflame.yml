@@ -1,0 +1,105 @@
+# Copyright 2026 FlagOS Contributors
+# Licensed under the Apache License, Version 2.0.
+
+# Enflame ZIXIAOC200 training image-build configuration.
+hardware_name: enflame
+display_name: "Enflame ZIXIAOC200 Tests"
+
+ci_image: harbor.baai.ac.cn/flagos-dev/flagscale-train:manual-20260904-enflame-train-verified
+ci_train_image: harbor.baai.ac.cn/flagos-dev/flagscale-train:manual-20260904-enflame-train-verified
+
+runner_labels: ["flagscale-enflame-s60-gpu8"]
+
+container_volumes:
+  - /data:/data
+  - /dev:/dev
+  - /sys:/sys
+
+image_build:
+  enabled: true
+  registry: harbor.baai.ac.cn
+  target: dev
+  network: host
+  max_parallel: 1
+  runtime_device_count: '8'
+  runtime_smoke_nproc: '2'
+  registry_login: false
+  validation_script: tools/install/enflame/validate_image_build.sh
+  tasks:
+    train:
+      dockerfile: docker/enflame/Dockerfile.train
+      image: flagos-dev/flagscale-train
+      base_image: harbor.baai.ac.cn/flagos-dev/megatron-lm-fl:manual-20260810-enflame-dev
+      test_roles: [train]
+      source_refs:
+        FLAGSCALE_MEGATRON_REF: megatron_lm_fl
+
+container_options: >-
+  --privileged
+  --ipc=host
+  --shm-size=100g
+  --hostname flagscale_cicd
+  --user root
+  --env PIP_INDEX_URL=https://pypi.org/simple
+  --env PIP_BREAK_SYSTEM_PACKAGES=1
+  --ulimit nofile=65535:65535
+
+pkg_mgr: "pip"
+env_path: ""
+env_names:
+  train: ""
+  hetero_train: ""
+  inference: ""
+  serve: ""
+  rl: ""
+
+# Setup script for environment preparation
+setup_script: .github/scripts/set_env_enflame.sh
+
+# Test matrix configuration for unit tests
+test_matrix:
+  unit:
+    nproc_per_node: 2
+    # Include worker shutdown and coverage aggregation in the step budget.
+    timeout_minutes: 30
+
+# =============================================================================
+# Dependencies Configuration (Megatron-LM-FL & TE-FL)
+# =============================================================================
+dependencies:
+  megatron_lm_fl:
+    enabled: true
+    repository: flagos-ai/Megatron-LM-FL
+    ref: main
+    runtime:
+      install_mode: pythonpath
+      environment: {}
+
+  te_fl:
+    enabled: true
+    repository: flagos-ai/TransformerEngine-FL
+    ref: main
+    build_mode: python
+    build_environment:
+      TE_FL_SKIP_CUDA: "1"
+      NVTE_FLASH_ATTN: "0"
+      NVTE_FUSED_ATTN: "0"
+    runtime:
+      environment:
+        TE_FL_SKIP_CUDA: "1"
+        TE_FL_PREFER: flagos
+        NVTE_FLASH_ATTN: "0"
+        NVTE_FUSED_ATTN: "0"
+      install_pip_args: []
+      pip_packages:
+        - onnxscript
+        - megatron-energon[av_decode]~=7.0
+
+# Platform-owned paths. Shared/unrecognized code still runs every platform.
+paths_watch:
+  - docker/enflame/
+  - tools/install/enflame/
+  - requirements/enflame/
+  - .github/scripts/set_env_enflame.sh
+  - tests/test_utils/config/platforms/enflame.yaml
+  - .github/configs/enflame.yml

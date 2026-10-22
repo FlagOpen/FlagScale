@@ -20,6 +20,18 @@
 
 set -euo pipefail
 
+validate_timeout_minutes() {
+    local value=$1 config_file=$2 setting=$3
+    if ! [[ "$value" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$value" -gt 360 ]; then
+        echo "Invalid $setting in $config_file: $value (expected integer 1-360)" >&2
+        return 1
+    fi
+}
+
+validate_unit_timeout_minutes() {
+    validate_timeout_minutes "$1" "$2" "unit timeout_minutes"
+}
+
 load_platform_config() {
     local PLATFORM=$1
     local CONFIG_FILE=".github/configs/${PLATFORM}.yml"
@@ -33,35 +45,38 @@ load_platform_config() {
 
     # Extract CI/CD configuration from .github/configs using yq
     echo "Extracting configuration from $CONFIG_FILE"
-    CI_IMAGE=$(/usr/local/bin/yq -r '.ci_image' "$CONFIG_FILE")
-    CI_TRAIN_IMAGE=$(/usr/local/bin/yq -r '.ci_train_image // ""' "$CONFIG_FILE")
-    CI_INFERENCE_IMAGE=$(/usr/local/bin/yq -r '.ci_inference_image // ""' "$CONFIG_FILE")
+    CI_TRAIN_IMAGE=$(/usr/local/bin/yq -r '.ci_train_image // .ci_image // ""' "$CONFIG_FILE")
     RUNNER_LABELS=$(/usr/local/bin/yq -o=json -I=0 '.runner_labels' "$CONFIG_FILE")
     VOLUMES=$(/usr/local/bin/yq -o=json -I=0 '.container_volumes' "$CONFIG_FILE")
     CONTAINER_OPTIONS=$(/usr/local/bin/yq -r '.container_options' "$CONFIG_FILE")
+    UNIT_TIMEOUT_MINUTES=$(/usr/local/bin/yq -r '.test_matrix.unit.timeout_minutes // 20' "$CONFIG_FILE")
+    validate_unit_timeout_minutes "$UNIT_TIMEOUT_MINUTES" "$CONFIG_FILE" || return 1
+    RUNTIME_RECOVERY_TIMEOUT_MINUTES=$(/usr/local/bin/yq -r '.timeouts.runtime_recovery_minutes // 15' "$CONFIG_FILE")
+    validate_timeout_minutes "$RUNTIME_RECOVERY_TIMEOUT_MINUTES" "$CONFIG_FILE" "runtime recovery timeout_minutes" || return 1
 
     # Extract package manager configuration
     PKG_MGR=$(/usr/local/bin/yq -r '.pkg_mgr // "uv"' "$CONFIG_FILE")
     ENV_PATH=$(/usr/local/bin/yq -r '.env_path // "/opt/venv"' "$CONFIG_FILE")
     ENV_NAME_TRAIN=$(/usr/local/bin/yq -r '.env_names.train // "flagscale-train"' "$CONFIG_FILE")
-    ENV_NAME_INFERENCE=$(/usr/local/bin/yq -r '.env_names.inference // "flagscale-inference"' "$CONFIG_FILE")
-    ENV_NAME_SERVE=$(/usr/local/bin/yq -r '.env_names.serve // "flagscale-inference"' "$CONFIG_FILE")
     ENV_NAME_RL=$(/usr/local/bin/yq -r '.env_names.rl // "flagscale-rl"' "$CONFIG_FILE")
+
+    # Extract dependencies configuration
+    MEGATRON_LM_FL_ENABLED=$(/usr/local/bin/yq -r '.dependencies.megatron_lm_fl.enabled // false' "$CONFIG_FILE")
+    TE_FL_ENABLED=$(/usr/local/bin/yq -r '.dependencies.te_fl.enabled // false' "$CONFIG_FILE")
+    MEGATRON_RUNTIME_ENVIRONMENT=$(/usr/local/bin/yq -o=json -I=0 '.dependencies.megatron_lm_fl.runtime.environment // {}' "$CONFIG_FILE")
+    TE_FL_RUNTIME_ENVIRONMENT=$(/usr/local/bin/yq -o=json -I=0 '.dependencies.te_fl.runtime.environment // {}' "$CONFIG_FILE")
+    TE_FL_INSTALL_PIP_ARGS=$(/usr/local/bin/yq -o=json -I=0 '.dependencies.te_fl.runtime.install_pip_args // []' "$CONFIG_FILE")
+    TE_FL_RUNTIME_PIP_PACKAGES=$(/usr/local/bin/yq -o=json -I=0 '.dependencies.te_fl.runtime.pip_packages // []' "$CONFIG_FILE")
+    SETUP_SCRIPT=$(/usr/local/bin/yq -r '.setup_script // ""' "$CONFIG_FILE")
 
     echo "Package manager: $PKG_MGR"
     echo "Environment path: $ENV_PATH"
-    echo "Environment names: train=$ENV_NAME_TRAIN, inference=$ENV_NAME_INFERENCE, serve=$ENV_NAME_SERVE, rl=$ENV_NAME_RL"
+    echo "Environment names: train=$ENV_NAME_TRAIN, rl=$ENV_NAME_RL"
 
     # Validate required fields
-    if [ -z "$CI_IMAGE" ] || [ "$CI_IMAGE" = "null" ]; then
-        echo "❌ Error: ci_image not found in $CONFIG_FILE"
-        return 1
-    fi
     if [ -z "$CI_TRAIN_IMAGE" ] || [ "$CI_TRAIN_IMAGE" = "null" ]; then
-        CI_TRAIN_IMAGE="$CI_IMAGE"
-    fi
-    if [ -z "$CI_INFERENCE_IMAGE" ] || [ "$CI_INFERENCE_IMAGE" = "null" ]; then
-        CI_INFERENCE_IMAGE="$CI_IMAGE"
+        echo "❌ Error: ci_train_image not found in $CONFIG_FILE"
+        return 1
     fi
     if [ -z "$RUNNER_LABELS" ] || [ "$RUNNER_LABELS" = "null" ]; then
         echo "❌ Error: runner_labels not found in $CONFIG_FILE"
@@ -96,33 +111,27 @@ load_platform_config() {
     echo "Grouping tests by task type..."
     TRAIN_TESTS=$(echo "$FUNCTIONAL_TEST_MATRIX" | jq -c '[.[] | select(.task == "train")]')
     HETERO_TRAIN_TESTS=$(echo "$FUNCTIONAL_TEST_MATRIX" | jq -c '[.[] | select(.task == "hetero_train")]')
-    INFERENCE_TESTS=$(echo "$FUNCTIONAL_TEST_MATRIX" | jq -c '[.[] | select(.task == "inference")]')
-    SERVE_TESTS=$(echo "$FUNCTIONAL_TEST_MATRIX" | jq -c '[.[] | select(.task == "serve")]')
     RL_TESTS=$(echo "$FUNCTIONAL_TEST_MATRIX" | jq -c '[.[] | select(.task == "rl")]')
     BENCHMARK_TESTS=$(echo "$FUNCTIONAL_TEST_MATRIX" | jq -c '[.[] | select(.task == "benchmark")]')
 
     echo "Train tests: $(echo "$TRAIN_TESTS" | jq 'length') test(s)"
     echo "Hetero train tests: $(echo "$HETERO_TRAIN_TESTS" | jq 'length') test(s)"
-    echo "Inference tests: $(echo "$INFERENCE_TESTS" | jq 'length') test(s)"
-    echo "Serve tests: $(echo "$SERVE_TESTS" | jq 'length') test(s)"
     echo "RL tests: $(echo "$RL_TESTS" | jq 'length') test(s)"
     echo "Benchmark tests: $(echo "$BENCHMARK_TESTS" | jq 'length') test(s)"
 
     echo "✅ Loaded config for platform: $PLATFORM"
 
     # Output values to $GITHUB_OUTPUT
-    echo "ci_image=$CI_IMAGE" >> $GITHUB_OUTPUT
     echo "ci_train_image=$CI_TRAIN_IMAGE" >> $GITHUB_OUTPUT
-    echo "ci_inference_image=$CI_INFERENCE_IMAGE" >> $GITHUB_OUTPUT
     echo "container_options=$CONTAINER_OPTIONS" >> $GITHUB_OUTPUT
+    echo "unit_timeout_minutes=$UNIT_TIMEOUT_MINUTES" >> $GITHUB_OUTPUT
+    echo "runtime_recovery_timeout_minutes=$RUNTIME_RECOVERY_TIMEOUT_MINUTES" >> $GITHUB_OUTPUT
 
     { echo 'runs_on<<EOFRUNSON'; echo "$RUNNER_LABELS"; echo 'EOFRUNSON'; } >> $GITHUB_OUTPUT
     { echo 'container_volumes<<EOFVOLUMES'; echo "$VOLUMES"; echo 'EOFVOLUMES'; } >> $GITHUB_OUTPUT
     { echo 'device_types<<EOFDEVICETYPES'; echo "$DEVICE_TYPES"; echo 'EOFDEVICETYPES'; } >> $GITHUB_OUTPUT
     { echo 'train_test_matrix<<EOFTRAIN'; echo "$TRAIN_TESTS"; echo 'EOFTRAIN'; } >> $GITHUB_OUTPUT
     { echo 'hetero_train_test_matrix<<EOFHETEROTRAIN'; echo "$HETERO_TRAIN_TESTS"; echo 'EOFHETEROTRAIN'; } >> $GITHUB_OUTPUT
-    { echo 'inference_test_matrix<<EOFINFERENCE'; echo "$INFERENCE_TESTS"; echo 'EOFINFERENCE'; } >> $GITHUB_OUTPUT
-    { echo 'serve_test_matrix<<EOFINFERENCE'; echo "$SERVE_TESTS"; echo 'EOFINFERENCE'; } >> $GITHUB_OUTPUT
     { echo 'rl_test_matrix<<EOFRL'; echo "$RL_TESTS"; echo 'EOFRL'; } >> $GITHUB_OUTPUT
     { echo 'benchmark_test_matrix<<EOFBENCHMARK'; echo "$BENCHMARK_TESTS"; echo 'EOFBENCHMARK'; } >> $GITHUB_OUTPUT
 
@@ -130,7 +139,14 @@ load_platform_config() {
     echo "pkg_mgr=$PKG_MGR" >> $GITHUB_OUTPUT
     echo "env_path=$ENV_PATH" >> $GITHUB_OUTPUT
     echo "env_name_train=$ENV_NAME_TRAIN" >> $GITHUB_OUTPUT
-    echo "env_name_inference=$ENV_NAME_INFERENCE" >> $GITHUB_OUTPUT
-    echo "env_name_serve=$ENV_NAME_SERVE" >> $GITHUB_OUTPUT
     echo "env_name_rl=$ENV_NAME_RL" >> $GITHUB_OUTPUT
+
+    # Output dependencies configuration
+    echo "megatron_lm_fl_enabled=$MEGATRON_LM_FL_ENABLED" >> $GITHUB_OUTPUT
+    echo "te_fl_enabled=$TE_FL_ENABLED" >> $GITHUB_OUTPUT
+    echo "megatron_runtime_environment=$MEGATRON_RUNTIME_ENVIRONMENT" >> $GITHUB_OUTPUT
+    echo "te_fl_runtime_environment=$TE_FL_RUNTIME_ENVIRONMENT" >> $GITHUB_OUTPUT
+    echo "te_fl_install_pip_args=$TE_FL_INSTALL_PIP_ARGS" >> $GITHUB_OUTPUT
+    echo "te_fl_runtime_pip_packages=$TE_FL_RUNTIME_PIP_PACKAGES" >> $GITHUB_OUTPUT
+    echo "setup_script=$SETUP_SCRIPT" >> $GITHUB_OUTPUT
 }

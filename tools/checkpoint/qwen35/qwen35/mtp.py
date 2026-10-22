@@ -99,7 +99,9 @@ def _convert_mtp_mlp_hf2meg(hf_sd, meg_sd, cfg):
     # MoE MLP: reuse backbone conversion logic with MTP prefixes
     if "mtp.layers.0.mlp.gate.weight" in hf_sd:
         convert_moe_mlp_hf2meg(
-            hf_sd, meg_sd, 0,
+            hf_sd,
+            meg_sd,
+            0,
             hf_pfx="mtp.layers.0",
             mg_pfx="language_model.mtp.layers.0.mtp_model_layer",
             cfg=cfg,
@@ -138,7 +140,9 @@ def _convert_mtp_mlp_meg2hf(full_sd, hf_sd, cfg):
     mk = "language_model.mtp.layers.0.mtp_model_layer.mlp.router.weight"
     if mk in full_sd:
         convert_moe_mlp_meg2hf(
-            full_sd, hf_sd, 0,
+            full_sd,
+            hf_sd,
+            0,
             hf_pfx="mtp.layers.0",
             mg_pfx="language_model.mtp.layers.0.mtp_model_layer",
             cfg=cfg,
