@@ -13,12 +13,12 @@ permissions:
   issues: write
 
 concurrency:
-  group: ci-command-${{ github.event.comment.id }}
+  group: ci-command-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   dispatch:
-    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/ci run ')
+    if: github.event.issue.pull_request && (startsWith(github.event.comment.body, '/ci run ') || startsWith(github.event.comment.body, '/ci rerun-job '))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
