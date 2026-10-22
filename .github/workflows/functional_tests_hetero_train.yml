@@ -17,6 +17,21 @@ name: Common Functional Tests - Heterogeneous Training
 on:
   workflow_call:
     inputs:
+      source_repository:
+        type: string
+        required: false
+        default: ''
+        description: Explicit source repository for PR comment requests
+      source_sha:
+        type: string
+        required: false
+        default: ''
+        description: Immutable source commit for PR comment requests
+      runtime_recovery_timeout_minutes:
+        required: false
+        type: number
+        default: 15
+        description: Budget for each prepared dependency download and validation step
       platform:
         required: true
         type: string
@@ -118,8 +133,8 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           path: FlagScale
           ssh-strict: true
           ssh-user: git
@@ -138,8 +153,8 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           path: FlagScale
           ssh-strict: true
           ssh-user: git
@@ -157,8 +172,8 @@ jobs:
         id: checkout_attempt_3
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ inputs.source_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           path: FlagScale
           ssh-strict: true
           ssh-user: git
@@ -204,18 +219,36 @@ jobs:
           fail-on-cache-miss: false
 
       - name: Restore prepared Megatron artifact
-        if: inputs.megatron_lm_fl_enabled == 'true' && inputs.megatron_cache_key != '' && steps.megatron_cache_restore.outputs.cache-hit != 'true' && inputs.megatron_artifact_available == 'true'
+        if: inputs.platform != 'cuda' && inputs.megatron_lm_fl_enabled == 'true' && inputs.megatron_cache_key != '' && steps.megatron_cache_restore.outputs.cache-hit != 'true' && inputs.megatron_artifact_available == 'true'
         uses: actions/download-artifact@v4
         with:
           name: prepared-megatron-${{ inputs.platform }}-${{ github.run_id }}
           path: megatron-lm-fl-install
 
       - name: Restore prepared TE-FL artifact
-        if: inputs.te_fl_enabled == 'true' && inputs.te_fl_cache_key != '' && steps.te_fl_cache_restore.outputs.cache-hit != 'true' && inputs.te_fl_artifact_available == 'true'
+        if: inputs.platform != 'cuda' && inputs.te_fl_enabled == 'true' && inputs.te_fl_cache_key != '' && steps.te_fl_cache_restore.outputs.cache-hit != 'true' && inputs.te_fl_artifact_available == 'true'
         uses: actions/download-artifact@v4
         with:
           name: prepared-te-fl-${{ inputs.platform }}-${{ github.run_id }}
           path: te-fl-wheel
+
+      - name: Recover and validate CUDA megatron runtime
+        if: inputs.platform == 'cuda' && inputs.megatron_lm_fl_enabled == 'true'
+        timeout-minutes: ${{ inputs.runtime_recovery_timeout_minutes }}
+        uses: ./FlagScale/.github/actions/restore-prepared-runtime
+        with:
+          kind: megatron
+          artifact-name: prepared-megatron-cuda-${{ github.run_id }}
+          artifact-available: ${{ inputs.megatron_artifact_available }}
+
+      - name: Recover and validate CUDA te runtime
+        if: inputs.platform == 'cuda' && inputs.te_fl_enabled == 'true'
+        timeout-minutes: ${{ inputs.runtime_recovery_timeout_minutes }}
+        uses: ./FlagScale/.github/actions/restore-prepared-runtime
+        with:
+          kind: te
+          artifact-name: prepared-te-fl-cuda-${{ github.run_id }}
+          artifact-available: ${{ inputs.te_fl_artifact_available }}
 
       - name: Validate prepared training runtime
         if: inputs.megatron_lm_fl_enabled == 'true' || inputs.te_fl_enabled == 'true'
