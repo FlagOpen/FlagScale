@@ -21,6 +21,11 @@ on:
         required: false
         description: Optional FlagCICD report upload token; unavailable in fork PRs
     inputs:
+      unit_selection:
+        type: string
+        required: false
+        default: ''
+        description: Planned unit targets; empty retains the legacy launcher and coverage behavior
       source_repository:
         type: string
         required: false
@@ -313,6 +318,8 @@ jobs:
 
       - name: Run unit tests
         id: unit_test
+        env:
+          UNIT_SELECTION: ${{ inputs.unit_selection }}
         run: |
           set -euo pipefail
           cd $PROJECT_ROOT
@@ -345,13 +352,18 @@ jobs:
           echo "Python location: ${CI_PYTHON_BIN:-python3}"
           echo "Python version: $(${CI_PYTHON_BIN:-python3} --version)"
 
+          selection_args=()
+          if [ -n "$UNIT_SELECTION" ]; then
+            printf '%s\n' "$UNIT_SELECTION" > "$RUNNER_TEMP/unit-selection.json"
+            selection_args=(--selection-file "$RUNNER_TEMP/unit-selection.json")
+          fi
           set +e
           # PYTHONPATH is set by run_unit_tests.sh with correct priority
           # Do NOT override it here to prevent path order conflicts
           bash ./tests/test_utils/runners/run_unit_tests.sh \
             --platform '${{ inputs.platform }}' \
             --device '${{ inputs.device }}' \
-            --coverage-dir "$COVERAGE_REPORT_DIR"
+            --coverage-dir "$COVERAGE_REPORT_DIR" "${selection_args[@]}"
           exit_code=$?
           set -e
 
@@ -364,6 +376,15 @@ jobs:
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
           exit $exit_code
         timeout-minutes: ${{ inputs.unit_timeout_minutes }}
+
+      - name: Upload planned unit execution evidence
+        if: ${{ !cancelled() && inputs.unit_selection != '' && steps.unit_test.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-evidence-${{ inputs.platform }}-${{ inputs.device }}-${{ github.run_attempt }}
+          path: ${{ env.PROJECT_ROOT }}/test-results/unit
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Check generated coverage report
         id: coverage_report

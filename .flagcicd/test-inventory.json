@@ -22,6 +22,11 @@
       "kind": "automated"
     },
     {
+      "path": "tests/ci/test_flagcicd_execution.py",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
       "path": "tests/ci/test_flagcicd_plan.py",
       "group": "ci-control",
       "kind": "automated"
