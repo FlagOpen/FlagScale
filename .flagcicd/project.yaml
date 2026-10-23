@@ -1,0 +1,19 @@
+# Copyright 2026 FlagOS Contributors
+# Licensed under the Apache License, Version 2.0.
+schema_version: flagcicd.project/v1
+repository: FlagScale
+platform_config_glob: .github/configs/*.yml
+adapter:
+  tiers: .flagcicd/test-tiers.json
+  inventory: .flagcicd/test-inventory.json
+  test_platform_config_glob: tests/test_utils/config/platforms/*.yaml
+profiles:
+  pr:
+    selection: affected
+    rollout: shadow
+  branch:
+    selection: all
+  nightly:
+    selection: all
+# Levels describe capability, not a trigger or an automatic timeout budget.
+# Existing runners, topology, exclusions and coverage remain authoritative.
