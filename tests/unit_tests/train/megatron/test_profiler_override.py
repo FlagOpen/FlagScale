@@ -14,7 +14,6 @@
 
 """Exercise the real profiler override dispatch with mocked backend SDKs."""
 
-import runpy
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -35,7 +34,8 @@ def profiler_env(monkeypatch, tmp_path):
     monkeypatch.setattr(decorators, "_lazy_registry", {})
     monkeypatch.setattr(decorators, "_plugin_impl_cache", {})
     monkeypatch.setattr(decorators, "_original_impl_cache", set())
-    runpy.run_path(str(Path(megatron.plugin_flagscale.__file__).with_name("override_registry.py")))
+    monkeypatch.setattr(megatron.plugin_flagscale, "_overrides_registered", False)
+    megatron.plugin_flagscale.register_overrides()
     monkeypatch.setenv("MG_FL_PREFER", "cuda")
 
     standard = Mock()
@@ -66,7 +66,10 @@ def profiler_env(monkeypatch, tmp_path):
         pytorch_profiler_collect_callstack=False,
         pytorch_profiler_collect_chakra=False,
     )
-    return SimpleNamespace(args=args, standard=standard, npu=npu, reports=reports)
+    yield SimpleNamespace(args=args, standard=standard, npu=npu, reports=reports)
+
+    # Remove the lazily imported module before monkeypatch restores any original.
+    sys.modules.pop("megatron.plugin_flagscale.npu_plugin", None)
 
 
 def test_default_uses_standard_profiler_and_preserves_reports(profiler_env):
