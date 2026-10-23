@@ -13,7 +13,8 @@ function classify(job, log) {
   const leaf = job.name.split(' / ').at(-1);
   const aggregate = {
     all_tests_complete: 'Verify all tests passed',
-    'CI Complete': 'Verify required checks'
+    'CI Complete': 'Verify required checks',
+    'Nightly Complete': 'Verify required checks'
   }[leaf];
   if (aggregate && failed.every(step => step.name === aggregate)) return 'aggregate';
   if (!failed.every(step => RECOVERY.test(step.name))) return 'unknown';
@@ -47,8 +48,14 @@ async function retry({ github, context, core }) {
       run.head_sha !== expected.head_sha || run.repository.full_name !== context.payload.repository.full_name) {
     return skip('run is not an unchanged first attempt on the default branch.');
   }
-  const { data: workflow } = await github.rest.actions.getWorkflow({ ...repo, workflow_id: 'ci.yml' });
-  if (run.workflow_id !== workflow.id) return skip('workflow is not ci.yml.');
+  // Moving the existing schedule must not remove its opt-in transfer recovery.
+  // Names choose an allowlisted file; the API workflow ID remains authoritative.
+  const workflowFile = run.name === 'Nightly' ? 'nightly.yml' : 'ci.yml';
+  if (workflowFile === 'nightly.yml' && run.event !== 'schedule') {
+    return skip('Nightly retry requires a schedule event.');
+  }
+  const { data: workflow } = await github.rest.actions.getWorkflow({ ...repo, workflow_id: workflowFile });
+  if (run.workflow_id !== workflow.id) return skip('workflow is not the allowlisted CI entry.');
   const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
     ...repo, run_id: run.id, filter: 'latest', per_page: 100
   });

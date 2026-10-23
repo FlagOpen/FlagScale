@@ -76,3 +76,18 @@ test('API errors stop inspection before rerunning anything', async () => {
   const f = fixture(); f.github.request = async () => { throw new Error('logs unavailable'); };
   await assert.rejects(retry(f), /logs unavailable/); assert.equal(f.calls.length, 0);
 });
+
+test('scheduled Nightly keeps bounded transfer recovery and verifies its workflow ID', async () => {
+  const f = fixture([root(), { ...aggregate, name: 'Nightly Complete' }], { name: 'Nightly', event: 'schedule' });
+  f.github.rest.actions.getWorkflow = async params => {
+    assert.equal(params.workflow_id, 'nightly.yml');
+    return { data: { id: 2 } };
+  };
+  await retry(f); assert.equal(f.calls.length, 1);
+  for (const change of [{ name: 'Nightly', event: 'push' },
+    { name: 'Nightly', event: 'workflow_dispatch' },
+    { name: 'Nightly', event: 'schedule', workflow_id: 999 }]) {
+    const denied = fixture(undefined, change); await retry(denied);
+    assert.equal(denied.calls.length, 0);
+  }
+});

@@ -3,7 +3,9 @@
 """Exercise real pytest evidence and planned-target validation without devices."""
 
 import copy
+import json
 import os
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -15,6 +17,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / ".github/scripts/ci"
 sys.path.insert(0, str(SCRIPTS))
+import check_results as gate
 import flagcicd_plan as planner
 import flagcicd_unit as unit
 
@@ -142,3 +145,137 @@ def test_optional_workflow_inputs_preserve_legacy_callers_and_secrets():
     assert common["jobs"]["functional_tests_inference"]["if"].startswith("false")
     assert common["jobs"]["functional_tests_serve"]["if"].startswith("false")
     assert "functional_tests_rl" not in common["jobs"]
+
+
+def test_pr_and_nightly_share_execution_but_not_trigger_or_cancellation():
+    def workflow(name):
+        return yaml.load(
+            (ROOT / f".github/workflows/{name}.yml").read_text(), Loader=yaml.BaseLoader
+        )
+
+    ci, nightly = workflow("ci"), workflow("nightly")
+    assert "schedule" not in ci["on"]
+    assert set(nightly["on"]) == {"schedule", "workflow_dispatch"}
+    assert nightly["on"]["schedule"] == [{"cron": "0 18 * * *"}]
+    assert nightly["concurrency"]["cancel-in-progress"] == "false"
+    assert ci["concurrency"]["group"] != nightly["concurrency"]["group"]
+    for entry in (ci, nightly):
+        pipeline = entry["jobs"]["platform-pipeline"]
+        assert pipeline["uses"] == "./.github/workflows/_platform_pipeline.yml"
+        assert pipeline["with"]["test_plan"] == "${{ needs.generate-matrix.outputs.plan }}"
+        assert "source_sha" not in pipeline["with"]  # do not disable trusted main cache saves
+        compute = next(
+            step for step in entry["jobs"]["generate-matrix"]["steps"] if step.get("id") == "matrix"
+        )
+        assert "flagcicd_plan.py plan" in compute["run"]
+    nightly_compute = next(
+        step for step in nightly["jobs"]["generate-matrix"]["steps"] if step.get("id") == "matrix"
+    )
+    assert nightly_compute["env"]["PROFILE"] == "nightly"
+    assert nightly_compute["env"]["ROLLOUT_MODE"] == "enforce"
+    assert nightly["jobs"]["ci-complete"]["name"] == "Nightly Complete"
+    assert "Nightly" in workflow("notify-feishu")["on"]["workflow_run"]["workflows"]
+    assert "Nightly" in workflow("ci-infra-retry")["on"]["workflow_run"]["workflows"]
+
+
+def test_global_gate_rejects_missing_stale_or_modified_plan():
+    plan = planner.build_plan(ROOT, profile="nightly", labels=[], changed=None)
+    assert not gate.plan_failures(plan, plan["platforms"], plan["source_sha"])
+    assert gate.plan_failures({}, [], plan["source_sha"])
+    assert gate.plan_failures(plan, [], plan["source_sha"])
+    assert gate.plan_failures(plan, plan["platforms"], "f" * 40)
+    changed = copy.deepcopy(plan)
+    changed["slices"]["ascend"]["cases"] = []
+    assert gate.plan_failures(changed, plan["platforms"], plan["source_sha"])
+
+
+@pytest.mark.parametrize("planned", [False, True])
+def test_real_shell_runner_retains_topology_and_exclusions(tmp_path, planned):
+    root = tmp_path / "repo"
+    runner_dir = root / "tests/test_utils/runners"
+    runner_dir.mkdir(parents=True)
+    scripts = root / ".github/scripts"
+    (scripts / "ci").mkdir(parents=True)
+    for filename in ("run_unit_tests.sh", "helpers.py"):
+        shutil.copy(ROOT / "tests/test_utils/runners" / filename, runner_dir / filename)
+    shutil.copy(SCRIPTS / "flagcicd_unit.py", scripts / "ci/flagcicd_unit.py")
+    (scripts / "set_env_common.sh").write_text("""
+ci_resolve_python_bin() { export CI_PYTHON_BIN="$CHECK_PYTHON"; }
+ci_configure_training_pythonpath() { export PYTHONPATH="$PROJECT_ROOT"; }
+""")
+    (runner_dir / "utils.sh").write_text("""
+log_info() { :; }; log_error() { echo "$*" >&2; }; log_success() { :; }
+validate_platform() { :; }; validate_device() { :; }; wait_for_gpu() { :; }
+default_dist_backend() { echo gloo; }; default_torch_device_type() { echo cpu; }
+run_config_python() {
+    shift
+    if [[ "$1" == *parse_config.py ]]; then
+        echo '{"include":"*","exclude":["tests/unit_tests/ignored.py"],"nproc_per_node":2}'
+    else
+        "$CI_PYTHON_BIN" "$@"
+    fi
+}
+""")
+    target = root / "tests/unit_tests/test_sample.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_ok(): assert True\n")
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=CI test",
+            "-c",
+            "user.email=ci@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+        check=True,
+    )
+    sha = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+    workspace = tmp_path / "workspace"
+    (workspace / "megatron-lm-fl-install").mkdir(parents=True)
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    torchrun = binary / "torchrun"
+    torchrun.write_text(
+        f'#!{sys.executable}\nimport json, os, sys\nopen(os.environ["TRACE"], "w").write(json.dumps(sys.argv[1:]))\n'
+    )
+    torchrun.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": str(binary) + os.pathsep + os.environ["PATH"],
+        "CHECK_PYTHON": sys.executable,
+        "GITHUB_WORKSPACE": str(workspace),
+        "TRACE": str(tmp_path / "trace.json"),
+    }
+    env.pop("COVERAGE_DIR", None)
+    args = ["bash", str(runner_dir / "run_unit_tests.sh"), "--platform", "cuda", "--device", "a100"]
+    if planned:
+        selection_file = tmp_path / "selection.json"
+        selection_file.write_text(
+            json.dumps(
+                {
+                    "source_sha": sha,
+                    "plan_hash": "a" * 64,
+                    "mode": "affected",
+                    "targets": {"a100": ["tests/unit_tests/test_sample.py"]},
+                }
+            )
+        )
+        args.extend(["--selection-file", str(selection_file)])
+    result = subprocess.run(args, env=env, cwd=root, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    argv = json.loads((tmp_path / "trace.json").read_text())
+    assert argv[0] == "--nproc_per_node=2"
+    assert "--ignore=tests/unit_tests/ignored.py" in argv
+    assert ("flagcicd_pytest" in argv) == planned
+    assert ("tests/unit_tests/test_sample.py" if planned else "tests/unit_tests/") in argv
+    if planned:
+        assert (root / "test-results/unit/a100/selection.json").is_file()

@@ -178,6 +178,8 @@ EOF
             read -r -a TEST_TARGET_ARGS <<< "$selected_targets"
         fi
         export FLAGSCALE_CI_JUNIT_DIR="$PROJECT_ROOT/test-results/unit/$device"
+        mkdir -p "$FLAGSCALE_CI_JUNIT_DIR"
+        cp "$SELECTION_FILE" "$FLAGSCALE_CI_JUNIT_DIR/selection.json"
         export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$PROJECT_ROOT/.github/scripts/ci"
         RUNNER_CMD+=(-p flagcicd_pytest)
     fi

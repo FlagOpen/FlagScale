@@ -35,6 +35,12 @@ def load_contract(root: Path) -> tuple[dict, dict, dict]:
     project = yaml.safe_load((root / ".flagcicd/project.yaml").read_text())
     if project.get("schema_version") != "flagcicd.project/v1":
         raise ValueError("Unsupported project schema")
+    if (
+        set(project)
+        != {"schema_version", "repository", "platform_config_glob", "adapter", "profiles"}
+        or project["repository"] != "FlagScale"
+    ):
+        raise ValueError("Unsupported project fields or repository")
     # Adapter locations are fixed for v1; source configuration cannot execute hooks.
     expected = {
         "tiers": ".flagcicd/test-tiers.json",
@@ -72,6 +78,10 @@ def load_contract(root: Path) -> tuple[dict, dict, dict]:
             raise ValueError(f"Invalid inventory entry: {entry}")
         if not (root / entry["path"]).is_file():
             raise ValueError(f"Missing test file: {entry['path']}")
+        if entry["group"] in tiers["unit_groups"] and not entry["path"].startswith(
+            tiers["unit_groups"][entry["group"]]
+        ):
+            raise ValueError(f"Unit file outside declared group: {entry['path']}")
     for route in tiers["source_routes"]:
         if (
             not route["paths"]

@@ -69,3 +69,56 @@ The default PR rollout is **shadow**: record the proposed affected selection but
 execute the legacy full test set on selected platforms. After hardware review,
 repository variable `CI_AFFECTED_TESTS_ENABLED=true` enables affected execution.
 This variable cannot be enabled by a PR label or a workflow input.
+
+## Execution and evidence
+
+Both entry workflows call the existing `_platform_pipeline.yml` dependency/test
+chain. The `test_plan` input is optional; empty preserves legacy callers such as
+image validation and authorized comment requests. Ordinary CI continues using
+the immutable event SHA fallback, so explicitly requested PR source retains its
+existing cache-write isolation. Plan consumers compare the source SHA and
+configuration fingerprint with their checkout before executing selected tests.
+
+The planner's hash identifies content; it is **not** a signature or a replacement
+for GitHub's workflow trust and fork-approval boundaries. This adapter does not
+introduce `pull_request_target`, privileged candidate execution, a central
+trusted Core distribution, or a cross-repository release acceptance gate.
+
+Planned unit tests retain the same torchrun process count and coverage setup.
+They emit JUnit per rank, and empty/all-skipped runs fail. Functional cases use
+the existing matrix, launcher and result comparator; the platform gate requires
+each planned job category to succeed and permits only deliberately empty
+functional matrices to skip. This is job/matrix completion evidence, **not** the
+future cross-repository group/platform report protocol. Existing functional
+exit codes remain authoritative; their result validation is not replaced.
+
+The daily 02:00 Asia/Shanghai schedule moves from `CI` to `Nightly`, avoiding
+duplicate schedules. Nightly always selects all enabled configured cases;
+main pushes and manual `CI` runs retain full execution. Nightly has independent
+non-cancelling concurrency and a `Nightly Complete` check, while PRs retain
+`CI Complete`. Notifications and the default-disabled infrastructure retry
+controller recognize the new scheduled entry without admitting PRs/dispatches.
+
+No resource parallelism is added: unit topology and existing workflow ordering
+remain unchanged. This does not claim cross-run physical-device reservation;
+runner scheduling and explicit shared-resource locks still require hardware
+validation. Coverage source roots, calculation, thresholds and upload endpoints
+are unchanged. Consult the plan's profile/mode/unit_mode before interpreting a
+partial PR coverage sample as a full-regression measurement.
+
+## Local inspection
+
+From the repository root, with PyYAML installed:
+
+```bash
+python .github/scripts/ci/flagcicd_contract.py
+python .github/scripts/ci/flagcicd_plan.py plan --profile nightly --file /tmp/flagscale-plan.json
+python .github/scripts/ci/flagcicd_plan.py slice --file /tmp/flagscale-plan.json --platform ascend
+python -m pytest --confcutdir=tests/ci tests/ci -q
+node --test tests/ci/*.test.cjs
+```
+
+Before enabling affected execution, review proposed routes on real platform
+runs, including fork approval, cached dependency recovery, retained exclusions,
+rank-specific reports, benchmark baselines and the platform's short training
+case. CPU planner tests cannot certify those hardware paths.

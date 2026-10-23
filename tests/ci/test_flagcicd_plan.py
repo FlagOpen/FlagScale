@@ -47,6 +47,8 @@ def test_full_plan_matches_every_enabled_configured_case(profile):
 
 def test_training_level_follows_actual_topology_not_ten_iteration_name():
     result = plan(profile="nightly")
+    assert result["capability_readiness"]["L4"] == "partial"
+    assert result["slices"]["ascend"]["unit_execution_level"] == "L3"
     ascend = next(case for case in result["slices"]["ascend"]["cases"] if case["task"] == "train")
     hygon = next(case for case in result["slices"]["hygon"]["cases"] if case["task"] == "train")
     assert ascend["level"] == "L3"

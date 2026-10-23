@@ -3,6 +3,7 @@
 # Licensed under the Apache License, Version 2.0.
 """Validate the unified CI gate, including the intentional documentation skip."""
 
+import hashlib
 import json
 import os
 
@@ -15,8 +16,26 @@ def failures(needs: dict, platforms: list[str]) -> list[str]:
     return errors
 
 
+def plan_failures(plan: dict, platforms: list[str], source_sha: str) -> list[str]:
+    payload = {key: value for key, value in plan.items() if key != "plan_hash"}
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    errors = []
+    if plan.get("schema_version") != "flagcicd.plan/v1" or digest != plan.get("plan_hash"):
+        errors.append("plan identity")
+    if plan.get("platforms") != platforms or plan.get("source_sha") != source_sha:
+        errors.append("plan source/platforms")
+    return errors
+
+
 if __name__ == "__main__":
-    errors = failures(json.loads(os.environ["JOB_RESULTS"]), json.loads(os.environ["PLATFORMS"]))
+    platforms = json.loads(os.environ["PLATFORMS"])
+    errors = failures(json.loads(os.environ["JOB_RESULTS"]), platforms)
+    if "PLAN_JSON" in os.environ:
+        errors += plan_failures(
+            json.loads(os.environ["PLAN_JSON"]), platforms, os.environ["SOURCE_SHA"]
+        )
     if errors:
         raise SystemExit(f"CI failed or did not finish: {', '.join(errors)}")
     print("All selected CI checks passed")

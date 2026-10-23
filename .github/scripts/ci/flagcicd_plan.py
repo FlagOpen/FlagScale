@@ -212,6 +212,8 @@ def build_plan(
         effective_full = platform_full or mode == "shadow" or profile != "pr"
         slices[platform] = {
             "devices": devices,
+            "unit_execution_level": "L3",
+            "unit_level_reason": "Unsplit legacy torchrun envelope; individual unit semantics are not inferred from directory names.",
             "unit_mode": "full" if effective_full else "affected",
             "unit_targets": {
                 device: [] if effective_full else proposal[device] for device in devices
@@ -228,6 +230,13 @@ def build_plan(
         "profile": profile,
         "mode": mode,
         "selection": "affected" if profile == "pr" else "all",
+        "base_checks": [
+            {"job": "lint", "level": "L0", "scope": "static-and-configuration"},
+            {"job": "lint", "level": "L1", "scope": "hardware-free-ci-control-tests"},
+        ],
+        "capability_readiness": {
+            level: definition["readiness"] for level, definition in tiers["levels"].items()
+        },
         "source_sha": source_sha,
         "control_sha": control_sha,
         "base_sha": base_sha,
@@ -328,6 +337,7 @@ def main() -> None:
         result = {
             "platforms": json.dumps(plan["platforms"]),
             "plan": json.dumps(plan, separators=(",", ":")),
+            "reason": "; ".join(plan["reasons"]),
         }
         if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
             with open(summary, "a") as stream:
