@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "tests": [
+    {
+      "path": "tests/ci/infra_retry.test.cjs",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/ci/slash_command.test.cjs",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/ci/test_ci_control.py",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/ci/test_flagcicd_contract.py",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/ci/test_flagcicd_execution.py",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/ci/test_flagcicd_plan.py",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/ci/test_reporting.py",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/ci/test_runtime_delivery.py",
+      "group": "ci-control",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/checkpoint/test_qwen35_converter.py",
+      "group": "unit-checkpoint",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/kerv/test_configs.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/kerv/test_inprocess_entrypoint.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/kerv/test_launcher.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/kerv/test_ops.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/kerv/test_optimization_runtime.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/kerv/test_runtime.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/vla/test_protocols.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/vla/test_qwen_gr00t_config.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/vla/test_registry.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/vla/test_utils.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/vla/vlm/test_qwenvl_backbone.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/models/vla/vlm/test_vlm_init.py",
+      "group": "unit-models",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/elastic/test_diagnostic.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/elastic/test_gpu_health_check.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/elastic/test_log_collector.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/heartbeat/test_config.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/heartbeat/test_ft_integration.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/heartbeat/test_gpu_health.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/heartbeat/test_health_reader.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/heartbeat/test_monitor.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/heartbeat/test_runtime.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/straggler/test_config.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/straggler/test_detector.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/straggler/test_healthcheck.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/straggler/test_report.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/straggler/test_section.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_backend_megatron.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_backend_megatron_perf.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_backend_native_train.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_config_validation.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_diagnostics.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_functional_runner_env.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_launcher_ssh_perf.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_parse_hostfile.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_path_utils.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/runner/test_runner_train_straggler.py",
+      "group": "unit-runner",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/serve/processor/test_image_resize_processor.py",
+      "group": "unit-serve",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_basic.py",
+      "group": "unit-core",
+      "kind": "placeholder"
+    },
+    {
+      "path": "tests/unit_tests/test_ci_training_runtime_scripts.py",
+      "group": "unit-core",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_cli.py",
+      "group": "unit-core",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_init.py",
+      "group": "unit-core",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_parallel_context.py",
+      "group": "unit-core",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_resolve_source_refs.py",
+      "group": "unit-core",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_run.py",
+      "group": "unit-core",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_setup.py",
+      "group": "unit-core",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_spiky_loss_detector.py",
+      "group": "unit-core",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/test_utilities.py",
+      "group": "unit-core",
+      "kind": "helper"
+    },
+    {
+      "path": "tests/unit_tests/train/megatron/test_distributed_backends.py",
+      "group": "unit-train",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/train/megatron/test_qwen35_tokenizer.py",
+      "group": "unit-train",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/train/megatron/test_train_robobrain_x0.py",
+      "group": "unit-train",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/train/test_perf_monitor.py",
+      "group": "unit-train",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/train/test_train_config.py",
+      "group": "unit-train",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/train/utils/test_optim_setup.py",
+      "group": "unit-train",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/train/utils/test_train_utils.py",
+      "group": "unit-train",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/transformations/diffusion/test_taylorseer_transformation.py",
+      "group": "unit-transformations",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/transformations/diffusion/test_timestep_tracker_transformation.py",
+      "group": "unit-transformations",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/transformations/test_hook.py",
+      "group": "unit-transformations",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/transformations/test_state_scope_transform.py",
+      "group": "unit-transformations",
+      "kind": "automated"
+    },
+    {
+      "path": "tests/unit_tests/transformations/test_state_store.py",
+      "group": "unit-transformations",
+      "kind": "automated"
+    }
+  ]
+}

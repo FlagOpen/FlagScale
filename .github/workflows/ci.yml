@@ -16,8 +16,6 @@
 name: CI
 
 on:
-  schedule:
-    - cron: '0 18 * * *'   # 02:00 Asia/Shanghai daily
   push:
     branches: [main]
   pull_request:
@@ -54,7 +52,7 @@ jobs:
         with:
           node-version: '22'
       - name: Test CI comment authorization
-        run: node --test tests/ci/slash_command.test.cjs
+        run: node --test tests/ci/*.test.cjs
       - name: Test CI control logic (no accelerators required)
         run: python -m pytest --confcutdir=tests/ci tests/ci -q
       - name: pre-commit (changed files)
@@ -71,10 +69,12 @@ jobs:
     timeout-minutes: 5
     outputs:
       platforms: ${{ steps.matrix.outputs.platforms }}
+      plan: ${{ steps.matrix.outputs.plan }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -85,11 +85,22 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
           HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          PROFILE: ${{ github.event_name == 'pull_request' && 'pr' || 'branch' }}
+          ROLLOUT_MODE: ${{ vars.CI_AFFECTED_TESTS_ENABLED == 'true' && 'enforce' || 'shadow' }}
+          CONTROL_SHA: ${{ github.workflow_sha }}
         run: |
-          python .github/scripts/ci/generate_matrix.py \
-            --event-name "$GITHUB_EVENT_NAME" \
+          python .github/scripts/ci/flagcicd_plan.py plan \
+            --profile "$PROFILE" --mode "$ROLLOUT_MODE" \
             --base-ref "$BASE_REF" --head-ref "$HEAD_REF" \
+            --control-sha "$CONTROL_SHA" --file "$RUNNER_TEMP/plan.json" \
             --event-path "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"
+      - name: Upload test plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/plan.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Explain selection
         env:
           PLATFORMS: ${{ steps.matrix.outputs.platforms }}
@@ -110,6 +121,7 @@ jobs:
       FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
     with:
       platform: ${{ matrix.platform }}
+      test_plan: ${{ needs.generate-matrix.outputs.plan }}
 
   ci-complete:
     # Do not publish a skipped required-gate name for an ignored label event.
@@ -124,6 +136,8 @@ jobs:
           persist-credentials: false
       - name: Verify required checks
         env:
+          PLAN_JSON: ${{ needs.generate-matrix.outputs.plan }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           JOB_RESULTS: ${{ toJSON(needs) }}
           PLATFORMS: ${{ needs.generate-matrix.outputs.platforms || '[]' }}
         run: python3 .github/scripts/ci/check_results.py

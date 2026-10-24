@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "unit_groups": {
+    "unit-checkpoint": "tests/unit_tests/checkpoint/",
+    "unit-models": "tests/unit_tests/models/",
+    "unit-runner": "tests/unit_tests/runner/",
+    "unit-serve": "tests/unit_tests/serve/",
+    "unit-train": "tests/unit_tests/train/",
+    "unit-transformations": "tests/unit_tests/transformations/",
+    "unit-core": "tests/unit_tests/"
+  },
+  "source_routes": [
+    {
+      "paths": [
+        "tools/checkpoint/qwen35/",
+        "examples/qwen35/"
+      ],
+      "groups": [
+        "unit-checkpoint"
+      ],
+      "reason": "Qwen3.5 converter tests load the converter and example model configuration."
+    }
+  ],
+  "levels": {
+    "L0": {
+      "purpose": "Static, configuration, inventory and plan validation",
+      "readiness": "implemented"
+    },
+    "L1": {
+      "purpose": "Hardware-free isolated tests and packaging checks",
+      "readiness": "partial",
+      "implemented": [
+        "ci-control"
+      ],
+      "gaps": [
+        "Dedicated FlagScale package build/install lane is not wired."
+      ]
+    },
+    "L2": {
+      "purpose": "Single-device runtime and short functional validation",
+      "readiness": "partial",
+      "gaps": [
+        "No dedicated universal accelerator smoke suite; classify configured training by actual topology."
+      ]
+    },
+    "L3": {
+      "purpose": "Multi-device, distributed and component integration",
+      "readiness": "requires_hardware_validation",
+      "implemented": [
+        "legacy torchrun unit execution",
+        "configured multi-device train and hetero_train"
+      ]
+    },
+    "L4": {
+      "purpose": "Performance, model quality, endurance and release acceptance",
+      "readiness": "partial",
+      "implemented": [
+        "configured benchmark"
+      ],
+      "gaps": [
+        "No complete endurance, convergence or accepted-release contract."
+      ]
+    }
+  },
+  "disabled_tasks": {
+    "inference": "Existing workflow is explicitly disabled.",
+    "serve": "Existing workflow is explicitly disabled.",
+    "rl": "Existing workflow is not connected."
+  }
+}
