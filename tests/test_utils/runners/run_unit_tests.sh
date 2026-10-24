@@ -172,7 +172,9 @@ EOF
     fi
     read -r -a TEST_TARGET_ARGS <<< "$TEST_TARGETS"
     if [ -n "$SELECTION_FILE" ]; then
-        selected_targets=$("$CI_PYTHON_BIN" "$PROJECT_ROOT/.github/scripts/ci/flagcicd_unit.py" \
+        # Selection is configuration data. Reuse the platform-aware helper so
+        # vendor .pth startup output cannot become pytest file arguments.
+        selected_targets=$(run_config_python "$PLATFORM" "$PROJECT_ROOT/.github/scripts/ci/flagcicd_unit.py" \
             --selection-file "$SELECTION_FILE" --device "$device") || return 1
         if [ -n "$selected_targets" ]; then
             read -r -a TEST_TARGET_ARGS <<< "$selected_targets"

@@ -189,8 +189,12 @@ def test_global_gate_rejects_missing_stale_or_modified_plan():
     assert gate.plan_failures(changed, plan["platforms"], plan["source_sha"])
 
 
-@pytest.mark.parametrize("planned", [False, True])
-def test_real_shell_runner_retains_topology_and_exclusions(tmp_path, planned):
+@pytest.mark.parametrize("platform,device", [("cuda", "a100"), ("enflame", "s60")])
+@pytest.mark.parametrize("selection_mode", [None, "full", "affected"])
+def test_real_shell_runner_retains_topology_and_exclusions(
+    tmp_path, platform, device, selection_mode
+):
+    planned = selection_mode is not None
     root = tmp_path / "repo"
     runner_dir = root / "tests/test_utils/runners"
     runner_dir.mkdir(parents=True)
@@ -203,18 +207,19 @@ def test_real_shell_runner_retains_topology_and_exclusions(tmp_path, planned):
 ci_resolve_python_bin() { export CI_PYTHON_BIN="$CHECK_PYTHON"; }
 ci_configure_training_pythonpath() { export PYTHONPATH="$PROJECT_ROOT"; }
 """)
-    (runner_dir / "utils.sh").write_text("""
+    # Use the real configuration-Python wrapper. A stub here would miss the
+    # vendor startup/stdout boundary that differs between CUDA and Enflame.
+    (runner_dir / "utils.sh").write_text(
+        (ROOT / "tests/test_utils/runners/utils.sh").read_text()
+        + """
 log_info() { :; }; log_error() { echo "$*" >&2; }; log_success() { :; }
 validate_platform() { :; }; validate_device() { :; }; wait_for_gpu() { :; }
 default_dist_backend() { echo gloo; }; default_torch_device_type() { echo cpu; }
-run_config_python() {
-    shift
-    if [[ "$1" == *parse_config.py ]]; then
-        echo '{"include":"*","exclude":["tests/unit_tests/ignored.py"],"nproc_per_node":2}'
-    else
-        "$CI_PYTHON_BIN" "$@"
-    fi
-}
+"""
+    )
+    (runner_dir / "parse_config.py").write_text("""
+import json
+print(json.dumps({"include": "*", "exclude": ["tests/unit_tests/ignored.py"], "nproc_per_node": 2}))
 """)
     target = root / "tests/unit_tests/test_sample.py"
     target.parent.mkdir(parents=True)
@@ -248,15 +253,35 @@ run_config_python() {
         f'#!{sys.executable}\nimport json, os, sys\nopen(os.environ["TRACE"], "w").write(json.dumps(sys.argv[1:]))\n'
     )
     torchrun.chmod(0o755)
+    python_bin = sys.executable
+    if platform == "enflame":
+        # Model the image's .pth hook: ordinary Python prints vendor diagnostics
+        # before a script runs, whereas -S prevents that startup side effect.
+        python_wrapper = binary / "vendor-python"
+        python_wrapper.write_text(
+            f"#!{sys.executable}\nimport os, sys\n"
+            'if "-S" not in sys.argv[1:]:\n'
+            '    print("CUDA vendor backend skipped (CUDA build was disabled at build time)", flush=True)\n'
+            f"os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])\n"
+        )
+        python_wrapper.chmod(0o755)
+        python_bin = str(python_wrapper)
     env = {
         **os.environ,
         "PATH": str(binary) + os.pathsep + os.environ["PATH"],
-        "CHECK_PYTHON": sys.executable,
+        "CHECK_PYTHON": python_bin,
         "GITHUB_WORKSPACE": str(workspace),
         "TRACE": str(tmp_path / "trace.json"),
     }
     env.pop("COVERAGE_DIR", None)
-    args = ["bash", str(runner_dir / "run_unit_tests.sh"), "--platform", "cuda", "--device", "a100"]
+    args = [
+        "bash",
+        str(runner_dir / "run_unit_tests.sh"),
+        "--platform",
+        platform,
+        "--device",
+        device,
+    ]
     if planned:
         selection_file = tmp_path / "selection.json"
         selection_file.write_text(
@@ -264,8 +289,12 @@ run_config_python() {
                 {
                     "source_sha": sha,
                     "plan_hash": "a" * 64,
-                    "mode": "affected",
-                    "targets": {"a100": ["tests/unit_tests/test_sample.py"]},
+                    "mode": selection_mode,
+                    "targets": {
+                        device: ["tests/unit_tests/test_sample.py"]
+                        if selection_mode == "affected"
+                        else []
+                    },
                 }
             )
         )
@@ -276,6 +305,9 @@ run_config_python() {
     assert argv[0] == "--nproc_per_node=2"
     assert "--ignore=tests/unit_tests/ignored.py" in argv
     assert ("flagcicd_pytest" in argv) == planned
-    assert ("tests/unit_tests/test_sample.py" if planned else "tests/unit_tests/") in argv
+    assert (
+        "tests/unit_tests/test_sample.py" if selection_mode == "affected" else "tests/unit_tests/"
+    ) in argv
+    assert "CUDA" not in argv
     if planned:
-        assert (root / "test-results/unit/a100/selection.json").is_file()
+        assert (root / f"test-results/unit/{device}/selection.json").is_file()
